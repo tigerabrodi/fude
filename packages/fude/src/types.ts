@@ -58,16 +58,16 @@ export type SmartTextboxStyles = {
 
 export type SmartTextboxProps = {
   /** The current value as an array of segments. */
-  value: Segment[]
+  value: Array<Segment>
 
   /** Called on every change. */
-  onChange: (segments: Segment[]) => void
+  onChange: (segments: Array<Segment>) => void
 
   /** Called when @ is typed. query is what the user typed after @. */
-  onFetchMentions?: (query: string) => Promise<MentionItem[]>
+  onFetchMentions?: (query: string) => Promise<Array<MentionItem>>
 
   /** Called after the user pauses typing. Return suggestion strings. */
-  onFetchSuggestions?: (trailing: string) => Promise<string[]>
+  onFetchSuggestions?: (trailing: string) => Promise<Array<string>>
 
   /** How long in ms the user must pause before calling onFetchSuggestions. */
   autocompleteDelay?: number
@@ -82,7 +82,7 @@ export type SmartTextboxProps = {
   multiline?: boolean
 
   /** Called when the user submits. */
-  onSubmit?: (segments: Segment[]) => void
+  onSubmit?: (segments: Array<Segment>) => void
 
   /** Default icon for all tag chips. Per-item icon overrides this. */
   defaultTagIcon?: ReactNode
