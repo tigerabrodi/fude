@@ -1,5 +1,5 @@
-import type { Segment } from './types'
 import type { MentionStore } from './mention-store'
+import type { Segment } from './types'
 
 /** The data attribute we put on chip spans to identify them as mentions. */
 export const MENTION_ID_ATTR = 'data-mention-id'
@@ -38,44 +38,62 @@ export function serialize(
     }
   }
 
-  for (const node of element.childNodes) {
-    // --- Plain text ---
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent ?? ''
-      // Skip empty text nodes (browsers insert these between elements)
-      if (text.length > 0) {
-        pendingText += text
-      }
-      continue
-    }
-
-    // --- Element nodes ---
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const el = node as HTMLElement
-
-      // <br> → newline character, folded into the text accumulator
-      if (el.tagName === 'BR') {
-        pendingText += '\n'
+  /** Recursively walk childNodes, handling text, <br>, chips, and block wrappers. */
+  function processNode(parent: HTMLElement, isBlockChild = false): void {
+    for (const node of parent.childNodes) {
+      // --- Plain text ---
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent ?? ''
+        // Skip empty text nodes (browsers insert these between elements)
+        if (text.length > 0) {
+          pendingText += text
+        }
         continue
       }
 
-      // Chip span → flush any pending text, then emit MentionSegment
-      const mentionId = el.getAttribute(MENTION_ID_ATTR)
-      if (mentionId) {
-        const item = store.get(mentionId)
+      // --- Element nodes ---
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement
 
-        // Defensive: if the store somehow doesn't have this item, skip it.
-        // This shouldn't happen in normal flow, but a library should not crash.
-        if (!item) continue
+        // <br> → newline character, folded into the text accumulator
+        if (el.tagName === 'BR') {
+          // Inside a block wrapper, a trailing <br> is a cursor placeholder —
+          // the block's own newline already accounts for the line break.
+          const isTrailingPlaceholder = isBlockChild && !el.nextSibling
+          if (!isTrailingPlaceholder) {
+            pendingText += '\n'
+          }
+          continue
+        }
 
-        flushText()
-        segments.push({ type: 'mention', item })
+        // Chip span → flush any pending text, then emit MentionSegment
+        const mentionId = el.getAttribute(MENTION_ID_ATTR)
+        if (mentionId) {
+          const item = store.get(mentionId)
+
+          // Defensive: if the store somehow doesn't have this item, skip it.
+          // This shouldn't happen in normal flow, but a library should not crash.
+          if (!item) continue
+
+          flushText()
+          segments.push({ type: 'mention', item })
+          continue
+        }
+
+        // Block-level wrapper (e.g. <div> from browser Enter key) —
+        // prepend newline if we already have content, then recurse.
+        if (pendingText.length > 0 || segments.length > 0) {
+          pendingText += '\n'
+        }
+        processNode(el, true)
         continue
       }
-    }
 
-    // Everything else (comments, unknown elements) is silently ignored.
+      // Everything else (comments, etc.) is silently ignored.
+    }
   }
+
+  processNode(element)
 
   // Don't forget any trailing text after the last chip
   flushText()

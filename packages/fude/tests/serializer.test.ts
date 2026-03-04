@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { MentionStore } from '../src/mention-store'
-import { serialize, deserialize, MENTION_ID_ATTR } from '../src/serializer'
-import type { Segment, MentionItem } from '../src/types'
+import { deserialize, MENTION_ID_ATTR, serialize } from '../src/serializer'
+import type { MentionItem, Segment } from '../src/types'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -127,9 +127,7 @@ describe('serialize', () => {
     div.appendChild(document.createTextNode('hello'))
     div.appendChild(document.createTextNode(''))
 
-    expect(serialize(div, store)).toEqual([
-      { type: 'text', value: 'hello' },
-    ])
+    expect(serialize(div, store)).toEqual([{ type: 'text', value: 'hello' }])
   })
 
   it('merges adjacent text nodes into one TextSegment', () => {
@@ -159,6 +157,91 @@ describe('serialize', () => {
       // BRs are folded into the surrounding text as \n
       { type: 'text', value: 'line one\nline two' },
     ])
+  })
+
+  it('recurses into block-level wrapper elements', () => {
+    const wrapper = document.createElement('div')
+    wrapper.appendChild(document.createTextNode('inside'))
+    div.appendChild(document.createTextNode('before'))
+    div.appendChild(wrapper)
+
+    expect(serialize(div, store)).toEqual([
+      { type: 'text', value: 'before\ninside' },
+    ])
+  })
+
+  it('handles browser-style div-wrapped lines', () => {
+    // Browser produces: first line as bare text, then <div> per subsequent line
+    div.appendChild(document.createTextNode('line1'))
+    const d2 = document.createElement('div')
+    d2.appendChild(document.createTextNode('line2'))
+    div.appendChild(d2)
+    const d3 = document.createElement('div')
+    d3.appendChild(document.createTextNode('line3'))
+    div.appendChild(d3)
+
+    expect(serialize(div, store)).toEqual([
+      { type: 'text', value: 'line1\nline2\nline3' },
+    ])
+  })
+
+  it('handles all lines wrapped in divs', () => {
+    const d1 = document.createElement('div')
+    d1.appendChild(document.createTextNode('line1'))
+    div.appendChild(d1)
+    const d2 = document.createElement('div')
+    d2.appendChild(document.createTextNode('line2'))
+    div.appendChild(d2)
+
+    expect(serialize(div, store)).toEqual([
+      { type: 'text', value: 'line1\nline2' },
+    ])
+  })
+
+  it('handles empty div (br inside) as blank line', () => {
+    div.appendChild(document.createTextNode('above'))
+    const empty = document.createElement('div')
+    empty.appendChild(document.createElement('br'))
+    div.appendChild(empty)
+    const d2 = document.createElement('div')
+    d2.appendChild(document.createTextNode('below'))
+    div.appendChild(d2)
+
+    expect(serialize(div, store)).toEqual([
+      { type: 'text', value: 'above\n\nbelow' },
+    ])
+  })
+
+  it('handles div containing a chip span', () => {
+    const item = createItem('1', 'file.ts')
+    store.set(item)
+
+    div.appendChild(document.createTextNode('text'))
+    const wrapper = document.createElement('div')
+    wrapper.appendChild(makeChipSpan('1'))
+    div.appendChild(wrapper)
+
+    expect(serialize(div, store)).toEqual([
+      { type: 'text', value: 'text\n' },
+      { type: 'mention', item },
+    ])
+  })
+
+  it('handles cleared contentEditable with div-wrapped br', () => {
+    // <div><br></div> as sole content — the br is just a cursor placeholder
+    const wrapper = document.createElement('div')
+    wrapper.appendChild(document.createElement('br'))
+    div.appendChild(wrapper)
+
+    expect(serialize(div, store)).toEqual([])
+  })
+
+  it('handles lone <br> (cleared contentEditable artifact)', () => {
+    div.appendChild(document.createElement('br'))
+
+    // The serializer faithfully reports what the DOM contains.
+    // Normalizing this to [] is the job of normalizeSegments.
+    expect(serialize(div, store)).toEqual([{ type: 'text', value: '\n' }])
   })
 
   it('handles <br> between chip and text', () => {
@@ -292,9 +375,7 @@ describe('round-trip', () => {
   }
 
   it('text only', () => {
-    const segments: Array<Segment> = [
-      { type: 'text', value: 'hello world' },
-    ]
+    const segments: Array<Segment> = [{ type: 'text', value: 'hello world' }]
     expect(roundTrip(segments)).toEqual(segments)
   })
 
