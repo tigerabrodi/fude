@@ -9,9 +9,7 @@ import type { Segment } from './types'
  * honest about what the DOM contains while presenting a clean value to
  * consumers.
  */
-export function normalizeSegments(
-  segments: Array<Segment>
-): Array<Segment> {
+export function normalizeSegments(segments: Array<Segment>): Array<Segment> {
   if (
     segments.length === 1 &&
     segments[0].type === 'text' &&

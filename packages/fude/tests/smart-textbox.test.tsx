@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
-import { fireEvent, render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { MENTION_ID_ATTR } from '../src/serializer'
 import { SmartTextbox } from '../src/smart-textbox'
 import type { MentionItem, Segment } from '../src/types'
 
@@ -418,5 +419,103 @@ describe('cleanup', () => {
     )
     const editor = container.querySelector('[role="textbox"]')!
     expect(editor.childNodes.length).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Chip rendering
+// ---------------------------------------------------------------------------
+
+describe('chip rendering', () => {
+  it('renders a chip span for mention segments', () => {
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'fix ' },
+      { type: 'mention', item },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={() => {}} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const chip = editor.querySelector(`[${MENTION_ID_ATTR}]`)
+    expect(chip).not.toBeNull()
+    expect(chip!.getAttribute(MENTION_ID_ATTR)).toBe('1')
+  })
+
+  it('renders chip label text inside chip span', async () => {
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [{ type: 'mention', item }]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={() => {}} />
+    )
+
+    // ChipContent renders via createRoot — need to flush
+    await act(() => Promise.resolve())
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const chip = editor.querySelector(`[${MENTION_ID_ATTR}]`)!
+    expect(chip.textContent).toContain('file.ts')
+  })
+
+  it('renders delete button on chip hover', async () => {
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [{ type: 'mention', item }]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={() => {}} />
+    )
+
+    await act(() => Promise.resolve())
+
+    const chip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
+
+    // The ChipContent has a wrapper span with display: contents
+    // Find the wrapper that has the mouseEnter handler
+    const chipContent = chip.firstElementChild as HTMLElement
+    fireEvent.mouseEnter(chipContent)
+
+    const deleteButton = chip.querySelector('[role="button"]')
+    expect(deleteButton).not.toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Chip deletion via click
+// ---------------------------------------------------------------------------
+
+describe('chip deletion', () => {
+  it('removes chip and calls onChange when delete icon is clicked', async () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'fix ' },
+      { type: 'mention', item },
+      { type: 'text', value: ' please' },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} />
+    )
+
+    await act(() => Promise.resolve())
+
+    const chip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const chipContent = chip.firstElementChild as HTMLElement
+    fireEvent.mouseEnter(chipContent)
+
+    const deleteButton = chip.querySelector('[role="button"]')!
+    fireEvent.mouseDown(deleteButton)
+
+    // onChange should have been called with segments minus the mention
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+    // Should only have text segments remaining
+    const hasMention = lastCall.some((s) => s.type === 'mention')
+    expect(hasMention).toBe(false)
   })
 })

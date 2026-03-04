@@ -80,6 +80,11 @@ export function serialize(
           continue
         }
 
+        // NOTE: This guard intentionally skips the leading \n for the very first
+        // block wrapper. Side effect: leading newlines from pressing Enter on an
+        // empty input are swallowed. This is acceptable for an input component
+        // where leading whitespace is not semantically meaningful.
+        //
         // Block-level wrapper (e.g. <div> from browser Enter key) —
         // prepend newline if we already have content, then recurse.
         if (pendingText.length > 0 || segments.length > 0) {
@@ -138,6 +143,10 @@ export function deserialize(
 
       const chip = createChipSpan(segment.item.id)
       fragment.appendChild(chip)
+      // Empty text node after chip so the cursor can navigate past
+      // the contentEditable="false" element. Browsers need a text node
+      // to place the caret after an atomic inline.
+      fragment.appendChild(document.createTextNode(''))
       continue
     }
   }
@@ -164,6 +173,9 @@ export function createChipSpan(id: string): HTMLSpanElement {
   const span = document.createElement('span')
   span.setAttribute(MENTION_ID_ATTR, id)
   span.contentEditable = 'false'
+  span.style.position = 'relative' // tooltip positioning
+  span.style.display = 'inline-flex' // icon + label horizontal layout
+  span.style.userSelect = 'none' // prevent text selection inside chip
   return span
 }
 

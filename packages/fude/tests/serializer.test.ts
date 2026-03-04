@@ -288,11 +288,15 @@ describe('deserialize', () => {
     const item = createItem('1', 'file.ts')
     const fragment = deserialize([{ type: 'mention', item }], store)
 
-    expect(fragment.childNodes.length).toBe(1)
+    // chip + empty text node spacer
+    expect(fragment.childNodes.length).toBe(2)
     const chip = fragment.childNodes[0] as HTMLElement
     expect(chip.tagName).toBe('SPAN')
     expect(chip.getAttribute(MENTION_ID_ATTR)).toBe('1')
     expect(chip.contentEditable).toBe('false')
+    // Empty text node spacer for cursor navigation
+    expect(fragment.childNodes[1].nodeType).toBe(Node.TEXT_NODE)
+    expect(fragment.childNodes[1].textContent).toBe('')
   })
 
   it('registers the mention item in the store', () => {
@@ -312,12 +316,16 @@ describe('deserialize', () => {
     ]
     const fragment = deserialize(segments, store)
 
-    expect(fragment.childNodes.length).toBe(3)
+    // text + chip + empty spacer + text = 4 nodes
+    expect(fragment.childNodes.length).toBe(4)
     expect(fragment.childNodes[0].textContent).toBe('lets fix ')
     expect(
       (fragment.childNodes[1] as HTMLElement).getAttribute(MENTION_ID_ATTR)
     ).toBe('1')
-    expect(fragment.childNodes[2].textContent).toBe(' and make it work')
+    // Empty text node spacer
+    expect(fragment.childNodes[2].nodeType).toBe(Node.TEXT_NODE)
+    expect(fragment.childNodes[2].textContent).toBe('')
+    expect(fragment.childNodes[3].textContent).toBe(' and make it work')
   })
 
   it('handles adjacent mentions', () => {
@@ -329,13 +337,24 @@ describe('deserialize', () => {
     ]
     const fragment = deserialize(segments, store)
 
-    // Both chips should be present as element children
+    // chip + spacer + chip + spacer = 4 nodes
+    expect(fragment.childNodes.length).toBe(4)
     const chips = Array.from(fragment.childNodes).filter(
       (n): n is HTMLElement => n.nodeType === Node.ELEMENT_NODE
     )
     expect(chips.length).toBe(2)
     expect(chips[0].getAttribute(MENTION_ID_ATTR)).toBe('1')
     expect(chips[1].getAttribute(MENTION_ID_ATTR)).toBe('2')
+  })
+
+  it('chip spans have layout styles for chip rendering', () => {
+    const item = createItem('1', 'file.ts')
+    const fragment = deserialize([{ type: 'mention', item }], store)
+
+    const chip = fragment.childNodes[0] as HTMLElement
+    expect(chip.style.position).toBe('relative')
+    expect(chip.style.display).toBe('inline-flex')
+    expect(chip.style.userSelect).toBe('none')
   })
 
   it('converts newlines in text to <br> elements', () => {
