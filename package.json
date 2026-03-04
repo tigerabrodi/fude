@@ -2,7 +2,9 @@
   "name": "fude-workspace",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "bun run --filter fude build",
     "format": "prettier --write .",

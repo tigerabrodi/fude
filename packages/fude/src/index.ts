@@ -6,4 +6,4 @@ export type {
   SmartTextboxProps,
   SmartTextboxClassNames,
   SmartTextboxStyles,
-} from "./types";
+} from './types'
