@@ -55,9 +55,11 @@ function createDeferred<T>(): {
 function MentionTestHarness({
   onFetchMentions,
   onChangeSpy,
+  multiline = true,
 }: {
   onFetchMentions?: SmartTextboxProps['onFetchMentions']
   onChangeSpy?: (segments: Array<Segment>) => void
+  multiline?: boolean
 }) {
   const [value, setValue] = useState<Array<Segment>>([])
   return (
@@ -68,7 +70,7 @@ function MentionTestHarness({
         onChangeSpy?.(segments)
       }}
       onFetchMentions={onFetchMentions}
-      multiline
+      multiline={multiline}
     />
   )
 }
@@ -280,6 +282,15 @@ describe('styling', () => {
 
     const editor = container.querySelector('[role="textbox"]') as HTMLElement
     expect(editor.style.whiteSpace).toBe('pre-wrap')
+  })
+
+  it('uses horizontal overflow scrolling in single-line mode', () => {
+    const { container } = render(
+      <SmartTextbox value={[]} onChange={() => {}} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]') as HTMLElement
+    expect(editor.style.overflowX).toBe('auto')
   })
 })
 
@@ -556,7 +567,10 @@ describe('@ mention dropdown', () => {
     const lastCall = onChange.mock.calls[
       onChange.mock.calls.length - 1
     ][0] as Array<Segment>
-    expect(lastCall).toEqual([{ type: 'mention', item: second }])
+    expect(lastCall).toEqual([
+      { type: 'mention', item: second },
+      { type: 'text', value: ' ' },
+    ])
     expect(document.body.querySelector('[role="listbox"]')).toBeNull()
   })
 
@@ -583,8 +597,92 @@ describe('@ mention dropdown', () => {
     const lastCall = onChange.mock.calls[
       onChange.mock.calls.length - 1
     ][0] as Array<Segment>
-    expect(lastCall).toEqual([{ type: 'mention', item }])
+    expect(lastCall).toEqual([
+      { type: 'mention', item },
+      { type: 'text', value: ' ' },
+    ])
     expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  it('scrolls active mention option into view during keyboard navigation', async () => {
+    const originalScrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollIntoView'
+    )
+    const scrollIntoViewSpy = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewSpy,
+    })
+
+    try {
+      const onFetchMentions = vi
+        .fn<MentionFetcher>()
+        .mockResolvedValue([
+          createItem('1', 'alpha.ts'),
+          createItem('2', 'beta.ts'),
+          createItem('3', 'gamma.ts'),
+        ])
+
+      const { container } = render(
+        <MentionTestHarness onFetchMentions={onFetchMentions} />
+      )
+
+      const editor = container.querySelector('[role="textbox"]')!
+      replaceEditorText(editor, '@')
+      fireEvent.input(editor)
+      await flushAsyncUpdates()
+
+      const callsAfterOpen = scrollIntoViewSpy.mock.calls.length
+      fireEvent.keyDown(editor, { key: 'ArrowDown' })
+      await flushAsyncUpdates()
+
+      expect(scrollIntoViewSpy.mock.calls.length).toBeGreaterThan(
+        callsAfterOpen
+      )
+      const lastCallArgs =
+        scrollIntoViewSpy.mock.calls[scrollIntoViewSpy.mock.calls.length - 1] ??
+        []
+      expect(lastCallArgs[0]).toEqual({ block: 'nearest' })
+    } finally {
+      if (originalScrollIntoViewDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'scrollIntoView',
+          originalScrollIntoViewDescriptor
+        )
+      } else {
+        delete (HTMLElement.prototype as { scrollIntoView?: unknown })
+          .scrollIntoView
+      }
+    }
+  })
+
+  it('keeps single-line caret visible at the right edge after mention insertion', async () => {
+    const item = createItem('1', 'alpha.ts')
+    const onFetchMentions = vi.fn<MentionFetcher>().mockResolvedValue([item])
+
+    const { container } = render(
+      <MentionTestHarness onFetchMentions={onFetchMentions} multiline={false} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]') as HTMLElement
+    Object.defineProperty(editor, 'clientWidth', {
+      configurable: true,
+      value: 100,
+    })
+    Object.defineProperty(editor, 'scrollWidth', {
+      configurable: true,
+      value: 320,
+    })
+    editor.scrollLeft = 0
+
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    fireEvent.keyDown(editor, { key: 'Enter' })
+    expect(editor.scrollLeft).toBe(320)
   })
 
   it('closes dropdown on Escape and keeps typed @query text', async () => {
@@ -640,8 +738,44 @@ describe('@ mention dropdown', () => {
     const lastCall = onChange.mock.calls[
       onChange.mock.calls.length - 1
     ][0] as Array<Segment>
-    expect(lastCall).toEqual([{ type: 'mention', item: second }])
+    expect(lastCall).toEqual([
+      { type: 'mention', item: second },
+      { type: 'text', value: ' ' },
+    ])
     expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  it('does not inject an extra space when text after mention already starts with whitespace', async () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'alpha.ts')
+    const onFetchMentions = vi.fn<MentionFetcher>().mockResolvedValue([item])
+
+    const { container } = render(
+      <MentionTestHarness
+        onFetchMentions={onFetchMentions}
+        onChangeSpy={onChange}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const queryNode = replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    queryNode.textContent = '@a hello'
+    setCursorAt(queryNode, 2)
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    fireEvent.keyDown(editor, { key: 'Enter' })
+
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+    expect(lastCall).toEqual([
+      { type: 'mention', item },
+      { type: 'text', value: ' hello' },
+    ])
   })
 
   it('closes dropdown on blur and outside click', async () => {

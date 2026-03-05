@@ -12,6 +12,7 @@ import { MentionStore } from './mention-store'
 import { normalizeSegments } from './normalize-segments'
 import { segmentsEqual } from './segments-equal'
 import {
+  CHIP_SENTINEL,
   createChipSpan,
   deserialize,
   MENTION_ID_ATTR,
@@ -119,6 +120,11 @@ function collapseBoundaryDoubleSpace(marker: Comment): void {
 
 function containsWhitespace(value: string): boolean {
   return /\s/.test(value)
+}
+
+function startsWithWhitespace(value: string): boolean {
+  if (value.length === 0) return false
+  return /\s/.test(value[0] ?? '')
 }
 
 function toFiniteNumber(value: number): number {
@@ -244,6 +250,34 @@ export function SmartTextbox({
     setMentionQuery(query)
   }
 
+  function syncSingleLineCaretVisibility(): void {
+    if (multiline) return
+
+    const editor = editorRef.current
+    if (!editor) return
+    if (editor.scrollWidth <= editor.clientWidth) {
+      editor.scrollLeft = 0
+      return
+    }
+
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    const range = selection.getRangeAt(0)
+    if (!range.collapsed || !editor.contains(range.startContainer)) return
+
+    const trailingRange = range.cloneRange()
+    try {
+      trailingRange.setEnd(editor, editor.childNodes.length)
+    } catch {
+      return
+    }
+
+    const trailingText = stripChipSentinels(trailingRange.toString())
+    if (trailingText.length === 0) {
+      editor.scrollLeft = editor.scrollWidth
+    }
+  }
+
   function closeMentionMode(): void {
     if (
       !mentionIsOpenRef.current &&
@@ -301,43 +335,26 @@ export function SmartTextbox({
 
   function openMentionFromCurrentCaret(): boolean {
     const editor = editorRef.current
-    console.log('[fude mention] open attempt', {
-      hasOnFetch: Boolean(onFetchMentions),
-      isOpen: mentionIsOpenRef.current,
-    })
 
     if (!editor || !onFetchMentions || mentionIsOpenRef.current) {
-      console.log(
-        '[fude mention] bail: missing editor/onFetch or already open',
-        {
-          hasEditor: Boolean(editor),
-          hasOnFetch: Boolean(onFetchMentions),
-          isOpen: mentionIsOpenRef.current,
-        }
-      )
       return false
     }
 
     const selection = document.getSelection()
     if (!selection || selection.rangeCount === 0) {
-      console.log('[fude mention] bail: no selection/range')
       return false
     }
 
     const caretRange = selection.getRangeAt(0)
     if (!caretRange.collapsed) {
-      console.log('[fude mention] bail: range not collapsed')
       return false
     }
     if (!editor.contains(caretRange.startContainer)) {
-      console.log('[fude mention] bail: selection outside editor')
       return false
     }
 
     const charBefore = getCharacterBeforeCaret(caretRange)
-    console.log('[fude mention] char before caret', charBefore)
     if (!charBefore || charBefore.char !== '@') {
-      console.log('[fude mention] bail: char before caret is not @')
       return false
     }
 
@@ -346,14 +363,11 @@ export function SmartTextbox({
       mentionRange.setStart(charBefore.node, charBefore.offset)
       mentionRange.setEnd(caretRange.startContainer, caretRange.startOffset)
     } catch {
-      console.log('[fude mention] bail: failed to build mention range')
       return false
     }
 
     const triggerText = stripChipSentinels(mentionRange.toString())
-    console.log('[fude mention] trigger text', JSON.stringify(triggerText))
     if (triggerText !== '@') {
-      console.log('[fude mention] bail: trigger text mismatch')
       return false
     }
 
@@ -370,7 +384,6 @@ export function SmartTextbox({
     setMentionActiveIndex(0)
     setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
     void fetchMentions('')
-    console.log('[fude mention] opened')
     return true
   }
 
@@ -437,12 +450,39 @@ export function SmartTextbox({
     storeRef.current.set(item)
     insertChipAtRange(mentionRange.cloneRange(), chip)
 
+    const spacer = chip.nextSibling
+    if (spacer && spacer.nodeType === Node.TEXT_NODE) {
+      const spacerText = spacer as Text
+      const spacerVisibleText = stripChipSentinels(spacerText.textContent ?? '')
+      const nextSibling = spacerText.nextSibling
+      const nextSiblingText =
+        nextSibling && nextSibling.nodeType === Node.TEXT_NODE
+          ? stripChipSentinels(nextSibling.textContent ?? '')
+          : ''
+
+      if (
+        spacerVisibleText.length === 0 &&
+        (nextSiblingText.length === 0 || !startsWithWhitespace(nextSiblingText))
+      ) {
+        spacerText.textContent = CHIP_SENTINEL + ' '
+        const selection = document.getSelection()
+        if (selection) {
+          const range = document.createRange()
+          range.setStart(spacerText, spacerText.textContent.length)
+          range.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(range)
+        }
+      }
+    }
+
     renderAllChips()
     editor.focus()
 
     const segments = normalizeSegments(serialize(editor, storeRef.current))
     onChange(segments)
     syncHeight()
+    syncSingleLineCaretVisibility()
     closeMentionMode()
   }
 
@@ -625,6 +665,7 @@ export function SmartTextbox({
       sel.addRange(range)
     }
     marker.remove()
+    syncSingleLineCaretVisibility()
 
     // Re-serialize and fire onChange
     const segments = normalizeSegments(serialize(editor, store))
@@ -743,6 +784,16 @@ export function SmartTextbox({
     syncMentionDropdownPosition()
   })
 
+  useEffect(() => {
+    if (!isMentionOpen) return
+    const dropdown = mentionDropdownRef.current
+    if (!dropdown) return
+    const selector = `[data-mention-option-index="${mentionActiveIndex}"]`
+    const activeOption = dropdown.querySelector<HTMLElement>(selector)
+    if (!activeOption) return
+    activeOption.scrollIntoView({ block: 'nearest' })
+  }, [isMentionOpen, mentionActiveIndex, mentionItems.length])
+
   // ---------------------------------------------------------------------------
   // Cleanup on unmount
   // ---------------------------------------------------------------------------
@@ -783,6 +834,7 @@ export function SmartTextbox({
     const segments = normalizeSegments(serialize(editor, storeRef.current))
     onChange(segments)
     syncHeight()
+    syncSingleLineCaretVisibility()
 
     if (isComposingRef.current) return
     if (mentionIsOpenRef.current) {
@@ -850,7 +902,6 @@ export function SmartTextbox({
     }
 
     if (e.key === '@' && onFetchMentions) {
-      console.log('[fude mention] keydown @ detected, scheduling open check')
       queueMicrotask(() => {
         openMentionFromCurrentCaret()
       })
@@ -1003,6 +1054,7 @@ export function SmartTextbox({
               key={`${item.id}-${index}`}
               role="option"
               aria-selected={isActive}
+              data-mention-option-index={index}
               className={classNames?.dropdownItem}
               onMouseEnter={() => setMentionActiveIndex(index)}
               onMouseDown={(event) => {
@@ -1060,7 +1112,7 @@ export function SmartTextbox({
             style={{
               outline: 'none',
               whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
-              overflowX: multiline ? undefined : 'hidden',
+              overflowX: multiline ? undefined : 'auto',
               wordBreak: multiline ? 'break-word' : undefined,
               ...styles?.input,
             }}
