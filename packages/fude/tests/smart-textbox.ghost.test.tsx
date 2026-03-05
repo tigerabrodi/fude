@@ -362,6 +362,31 @@ describe('ghost suggestions', () => {
     expect(editor.contains(ghost)).toBe(false)
   })
 
+  it('does not force inline ghost color/opacity when classNames.ghostText is provided', async () => {
+    vi.useFakeTimers()
+    const onFetchSuggestions = vi
+      .fn<SuggestionFetcher>()
+      .mockResolvedValue([' world'])
+
+    const { container } = render(
+      <GhostTestHarness
+        onFetchSuggestions={onFetchSuggestions}
+        multiline
+        classNames={{ ghostText: 'ghost-text text-[#FAFAFA]' }}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    replaceEditorText(editor, 'hello')
+    fireEvent.input(editor)
+    await advanceFakeTime(300)
+
+    const ghost = container.querySelector('.ghost-text') as HTMLElement
+    expect(ghost).not.toBeNull()
+    expect(ghost.style.color).toBe('')
+    expect(ghost.style.opacity).toBe('')
+  })
+
   it('uses execCommand insertText first when accepting ghost suggestion', async () => {
     vi.useFakeTimers()
     const originalDescriptor = Object.getOwnPropertyDescriptor(

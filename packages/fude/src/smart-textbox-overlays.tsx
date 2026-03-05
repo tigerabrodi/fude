@@ -150,6 +150,7 @@ export function GhostTextOverlay({
   styles,
 }: GhostTextOverlayProps): ReactElement | null {
   if (!isVisible || !anchor) return null
+  const hasGhostClassOverride = Boolean(classNames?.ghostText)
 
   return (
     <div
@@ -163,8 +164,8 @@ export function GhostTextOverlay({
         pointerEvents: 'none',
         userSelect: 'none',
         whiteSpace: 'pre',
-        opacity: 0.35,
-        color: '#6E6E6E',
+        opacity: hasGhostClassOverride ? undefined : 0.35,
+        color: hasGhostClassOverride ? undefined : '#6E6E6E',
         ...typography,
         ...styles?.ghostText,
       }}
