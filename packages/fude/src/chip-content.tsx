@@ -70,9 +70,12 @@ export type ChipContentProps = {
 // Styles
 // ---------------------------------------------------------------------------
 
-const chipStyles: CSSProperties = {
+const chipWrapperBaseStyles: CSSProperties = {
   display: 'inline-block',
   position: 'relative',
+}
+
+const chipWrapperMetricStyles: CSSProperties = {
   verticalAlign: 'text-bottom',
   lineHeight: 1,
 }
@@ -81,9 +84,12 @@ const chipInnerLayoutStyles: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
+  whiteSpace: 'nowrap',
+}
+
+const chipInnerMetricStyles: CSSProperties = {
   verticalAlign: 'text-bottom',
   lineHeight: 1.1,
-  whiteSpace: 'nowrap',
 }
 
 const chipInnerVisualStyles: CSSProperties = {
@@ -200,17 +206,20 @@ export function ChipContent({
     item.deleteIcon ?? defaultTagDeleteIcon ?? DEFAULT_DELETE_ICON
 
   const hasTagClassOverride = Boolean(classNames?.tag)
+  const hasTagWrapperClassOverride = Boolean(classNames?.tagWrapper)
   const mergedInnerStyles: CSSProperties = {
     ...chipInnerLayoutStyles,
+    ...(!hasTagClassOverride ? chipInnerMetricStyles : undefined),
     ...(!hasTagClassOverride ? chipInnerVisualStyles : undefined),
     ...(!hasTagClassOverride && isHovered ? chipInnerHoverStyles : undefined),
     ...(highlighted ? highlightedStyles : undefined),
     ...styles?.tag,
   }
-  const mergedWrapperStyles: CSSProperties & { [key: string]: string } = {
-    ...chipStyles,
-    ...(styles?.tagWrapper as CSSProperties),
-  } as CSSProperties & { [key: string]: string }
+  const mergedWrapperStyles: CSSProperties = {
+    ...chipWrapperBaseStyles,
+    ...(!hasTagWrapperClassOverride ? chipWrapperMetricStyles : undefined),
+    ...styles?.tagWrapper,
+  }
 
   return (
     <span

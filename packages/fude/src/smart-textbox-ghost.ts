@@ -152,7 +152,7 @@ export function useSmartTextboxGhost({
       ? parsedLineHeight
       : 0
     const rectHeight = toFiniteNumber(rect.height)
-    const height = Math.max(toFiniteNumber(rect.height), fallbackLineHeight)
+    const height = Math.max(rectHeight, fallbackLineHeight)
     const wrapperRect = wrapper.getBoundingClientRect()
     let top = toFiniteNumber(rect.top) - toFiniteNumber(wrapperRect.top)
     if (
@@ -160,8 +160,8 @@ export function useSmartTextboxGhost({
       rectHeight > 0 &&
       rectHeight < fallbackLineHeight
     ) {
-      // Some engines return glyph box height instead of line box height for
-      // collapsed ranges. Shift up so ghost text shares the same baseline.
+      // If the caret rect is glyph-sized but the line box is taller (custom
+      // leading), lift the anchor to line-box top so ghost aligns with text.
       top -= (fallbackLineHeight - rectHeight) / 2
     }
     const nextAnchor: GhostAnchor = {
@@ -190,12 +190,21 @@ export function useSmartTextboxGhost({
     if (!editor) return
 
     const computed = window.getComputedStyle(editor)
+    const parsedLineHeight = Number.parseFloat(computed.lineHeight)
+    const parsedFontSize = Number.parseFloat(computed.fontSize)
+    const normalizedLineHeight =
+      Number.isFinite(parsedLineHeight) &&
+      Number.isFinite(parsedFontSize) &&
+      parsedLineHeight < parsedFontSize
+        ? `${parsedFontSize}px`
+        : computed.lineHeight
+
     const nextTypography: CSSProperties = {
       fontFamily: computed.fontFamily,
       fontSize: computed.fontSize,
       fontWeight: computed.fontWeight,
       fontStyle: computed.fontStyle,
-      lineHeight: computed.lineHeight,
+      lineHeight: normalizedLineHeight,
       letterSpacing: computed.letterSpacing,
       textTransform: computed.textTransform,
       textIndent: computed.textIndent,

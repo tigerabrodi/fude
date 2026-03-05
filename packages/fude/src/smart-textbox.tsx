@@ -711,6 +711,8 @@ export function SmartTextbox({
   // ---------------------------------------------------------------------------
   const rootClassName = [className, classNames?.root].filter(Boolean).join(' ')
   const inputClassName = classNames?.input || undefined
+  const shouldApplyDefaultInputLineHeight = !inputClassName
+  const defaultInputLineHeight = multiline ? '1.6' : '1.4'
 
   const isPlaceholderVisible = isEmpty(value)
   const activeGhostSuggestion =
@@ -753,7 +755,9 @@ export function SmartTextbox({
             className={inputClassName}
             style={{
               outline: 'none',
-              lineHeight: multiline ? '1.45' : '1.4',
+              lineHeight: shouldApplyDefaultInputLineHeight
+                ? defaultInputLineHeight
+                : undefined,
               whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
               overflowX: multiline ? undefined : 'auto',
               wordBreak: multiline ? 'break-word' : undefined,

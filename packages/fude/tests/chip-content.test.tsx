@@ -233,4 +233,21 @@ describe('ChipContent', () => {
     expect(innerSpan.style.padding).toBe('')
     expect(innerSpan.style.backgroundColor).toBe('')
   })
+
+  it('does not force wrapper metric inline styles when classNames.tagWrapper is provided', () => {
+    const item = createItem('1', 'file.ts')
+    const { container } = render(
+      <ChipContent
+        item={item}
+        classNames={{ tagWrapper: 'align-middle my-0.5' }}
+        onDelete={() => {}}
+      />
+    )
+
+    const wrapper = container.firstElementChild as HTMLElement
+    expect(wrapper.style.display).toBe('inline-block')
+    expect(wrapper.style.position).toBe('relative')
+    expect(wrapper.style.verticalAlign).toBe('')
+    expect(wrapper.style.lineHeight).toBe('')
+  })
 })

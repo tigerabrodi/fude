@@ -311,8 +311,9 @@ const tailwindThemes: Array<TailwindTheme> = [
     classNames: {
       root: 'ring-1 ring-emerald-500/25',
       input:
-        'min-h-24 p-3 font-mono text-emerald-200 caret-emerald-300 tracking-tight placeholder:text-emerald-600/80',
+        'min-h-24 p-3 font-mono text-emerald-200 caret-emerald-300 tracking-tight placeholder:text-emerald-600/80 leading-6',
       tag: 'rounded-md border border-emerald-400/50 bg-slate-900 text-emerald-100 py-1 px-2',
+      tagWrapper: 'align-middle top-[2px]',
       tagIcon: 'text-emerald-300',
       tagDeleteIcon: 'text-rose-300',
       dropdown:
@@ -340,8 +341,9 @@ const tailwindThemes: Array<TailwindTheme> = [
     classNames: {
       root: 'ring-1 ring-amber-200/80',
       input:
-        'min-h-24 p-3 text-stone-700 caret-amber-700 font-serif placeholder:text-stone-400',
-      tag: 'rounded-full border border-amber-500 bg-amber-700 text-amber-50',
+        'min-h-24 p-3 text-stone-700 caret-amber-700 font-serif placeholder:text-stone-400 leading-8',
+      tagWrapper: 'align-middle my-1',
+      tag: 'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 leading-none',
       tagIcon: 'text-amber-100',
       tagDeleteIcon: 'text-rose-100',
       dropdown: '!border-amber-300 !bg-amber-50 !text-stone-800 shadow-xl',

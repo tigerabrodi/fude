@@ -197,6 +197,20 @@ describe('styling', () => {
     expect(editor!.classList.contains('custom-input')).toBe(true)
   })
 
+  it('does not force inline line-height when classNames.input is provided', () => {
+    const { container } = render(
+      <SmartTextbox
+        value={[]}
+        onChange={() => {}}
+        multiline
+        classNames={{ input: 'custom-input leading-8' }}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]') as HTMLElement
+    expect(editor.style.lineHeight).toBe('')
+  })
+
   it('applies styles.root to root wrapper', () => {
     const { container } = render(
       <SmartTextbox
@@ -240,7 +254,7 @@ describe('styling', () => {
 
     const editor = container.querySelector('[role="textbox"]') as HTMLElement
     expect(editor.style.whiteSpace).toBe('pre-wrap')
-    expect(editor.style.lineHeight).toBe('1.45')
+    expect(editor.style.lineHeight).toBe('1.6')
   })
 
   it('uses horizontal overflow scrolling in single-line mode', () => {
