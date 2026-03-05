@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 const multiChipScenarios: Array<{ name: string; value: Array<Segment> }> = [
   {
-    name: 'Adjacent chips',
+    name: 'Adjacent chips (no spaces)',
     value: [
       { type: 'text', value: 'review ' },
       {
@@ -25,6 +25,42 @@ const multiChipScenarios: Array<{ name: string; value: Array<Segment> }> = [
           tooltip: 'src/cursor-utils.ts',
         },
       },
+      {
+        type: 'mention',
+        item: {
+          id: '4',
+          searchValue: 'smart-textbox.tsx',
+          label: 'smart-textbox.tsx',
+          tooltip: 'src/smart-textbox.tsx',
+        },
+      },
+      { type: 'text', value: ' today' },
+    ],
+  },
+  {
+    name: 'Spaced chips',
+    value: [
+      { type: 'text', value: 'review ' },
+      {
+        type: 'mention',
+        item: {
+          id: '2',
+          searchValue: 'serializer.ts',
+          label: 'serializer.ts',
+          tooltip: 'src/serializer.ts',
+        },
+      },
+      { type: 'text', value: ' ' },
+      {
+        type: 'mention',
+        item: {
+          id: '3',
+          searchValue: 'cursor-utils.ts',
+          label: 'cursor-utils.ts',
+          tooltip: 'src/cursor-utils.ts',
+        },
+      },
+      { type: 'text', value: ' ' },
       {
         type: 'mention',
         item: {
@@ -167,7 +203,7 @@ export function App() {
     { type: 'text', value: ' and make it work' },
   ])
   const [multiChipValue, setMultiChipValue] = useState<Array<Segment>>(() =>
-    cloneSegments(multiChipScenarios[0].value)
+    cloneSegments(multiChipScenarios[1].value)
   )
   const [lastSubmit, setLastSubmit] = useState<string>('')
 
