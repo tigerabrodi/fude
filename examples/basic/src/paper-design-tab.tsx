@@ -38,6 +38,7 @@ export function PaperDesignTab({ value, onChange }: PaperDesignTabProps) {
               'min-h-[120px] p-[14px_16px] text-[15px] leading-6 text-[#FAFAFA] caret-[#FAFAFA] placeholder:text-[#444444]',
             tag: 'rounded-[5px] border border-[#2E2E2E] bg-[#1C1C1C] text-[#AAAAAA] px-2 py-0.5 gap-[5px] text-[13px] font-[Geist_Mono,JetBrains_Mono,ui-monospace,monospace]',
             tagIcon: 'text-[#666666]',
+            tagHighlighted: 'border-[#FAFAFA]',
             tagDeleteIcon: 'text-[#666666]',
             ghostText: 'text-[rgba(250,250,250,0.22)]',
             dropdown: '!bg-[#161616] !border-[#262626] !rounded-[10px] !p-1',
