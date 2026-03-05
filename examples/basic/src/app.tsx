@@ -1,6 +1,6 @@
 import type { MentionItem, Segment } from 'fude'
 import { SmartTextbox } from 'fude'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const mentionCatalog: Array<MentionItem> = [
   {
@@ -322,12 +322,12 @@ async function copyText(text: string): Promise<void> {
 }
 
 export function App() {
-  // useEffect(() => {
-  //   type DebugWindow = Window & {
-  //     __FUDE_DEBUG_FORCE_TOOLTIP_OPEN__?: boolean
-  //   }
-  //   ;(window as DebugWindow).__FUDE_DEBUG_FORCE_TOOLTIP_OPEN__ = true
-  // }, [])
+  useEffect(() => {
+    type DebugWindow = Window & {
+      __FUDE_DEBUG_CURSOR__?: boolean
+    }
+    ;(window as DebugWindow).__FUDE_DEBUG_CURSOR__ = true
+  }, [])
 
   const [singleValue, setSingleValue] = useState<Array<Segment>>([])
   const [multiValue, setMultiValue] = useState<Array<Segment>>([
