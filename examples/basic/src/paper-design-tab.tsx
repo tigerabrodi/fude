@@ -40,7 +40,7 @@ export function PaperDesignTab({ value, onChange }: PaperDesignTabProps) {
             tagIcon: 'text-[#666666]',
             tagHighlighted: 'border-[#FAFAFA]',
             tagDeleteIcon: 'text-[#666666]',
-            ghostText: 'text-[rgba(250,250,250,0.22)]',
+            ghostText: 'text-[#FAFAFA]',
             dropdown: '!bg-[#161616] !border-[#262626] !rounded-[10px] !p-1',
             dropdownItem:
               '!rounded-[7px] hover:!bg-[#1E1E1E] !text-[#AAAAAA] font-[Geist_Mono,JetBrains_Mono,ui-monospace,monospace] !text-[13px]',
