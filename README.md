@@ -84,7 +84,7 @@ getPlainText(segments) // "lets fix use-image-drag.ts and make it work"
 ## Basic usage
 
 ```tsx
-import { SmartTextbox, getPlainText } from 'fude'
+import { SmartTextbox, fuzzyFilter, getPlainText } from 'fude'
 import type { Segment, MentionItem } from 'fude'
 import { useState } from 'react'
 
@@ -210,11 +210,11 @@ Autocomplete is paused while the `@` dropdown is open. The two features do not f
 
 ### Behavior
 
-| Prop          | Type                            | Default                                        | Description                                                                                                                       |
-| ------------- | ------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `placeholder` | `string`                        | `"Type @ to mention, or just start typing..."` | Placeholder text shown when input is empty.                                                                                       |
-| `multiline`   | `boolean`                       | `false`                                        | When `false`, Enter submits. When `true`, Enter adds a newline and Cmd+Enter submits. Input grows vertically as content is added. |
-| `onSubmit`    | `(segments: Segment[]) => void` | —                                              | Called when the user submits.                                                                                                     |
+| Prop          | Type                            | Default | Description                                                                                                                            |
+| ------------- | ------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `placeholder` | `string`                        | —       | Placeholder text shown when input is empty.                                                                                            |
+| `multiline`   | `boolean`                       | `false` | When `false`, Enter submits. When `true`, Enter adds a newline and Cmd/Ctrl+Enter submits. Input grows vertically as content is added. |
+| `onSubmit`    | `(segments: Segment[]) => void` | —       | Called when the user submits.                                                                                                          |
 
 ### Default icons
 
@@ -258,18 +258,18 @@ type SmartTextboxClassNames = {
 
 ## Keyboard shortcuts
 
-| Key                   | When                         | What happens                                                     |
-| --------------------- | ---------------------------- | ---------------------------------------------------------------- |
-| `@`                   | Typing                       | Opens mention dropdown                                           |
-| `ArrowUp / ArrowDown` | Dropdown open                | Navigate items                                                   |
-| `Enter`               | Dropdown open                | Insert selected item as tag, close dropdown, focus back on input |
-| `Escape`              | Dropdown open                | Close dropdown, remove `@` trigger character                     |
-| `Tab`                 | Ghost text visible           | Accept autocomplete suggestion                                   |
-| `Shift+Tab`           | Ghost text visible           | Cycle to next suggestion                                         |
-| `Escape`              | Ghost text visible           | Dismiss suggestion                                               |
-| `Enter`               | Single-line, nothing open    | Submit (`onSubmit`)                                              |
-| `Cmd+Enter`           | Multiline, nothing open      | Submit (`onSubmit`)                                              |
-| `Backspace`           | Cursor directly before a tag | First press highlights the tag. Second press deletes it.         |
+| Key                      | When                         | What happens                                                     |
+| ------------------------ | ---------------------------- | ---------------------------------------------------------------- |
+| `@`                      | Typing                       | Opens mention dropdown                                           |
+| `ArrowUp / ArrowDown`    | Dropdown open                | Navigate items                                                   |
+| `Enter`                  | Dropdown open                | Insert selected item as tag, close dropdown, focus back on input |
+| `Escape`                 | Dropdown open                | Close dropdown, keep typed `@query` text                         |
+| `Tab`                    | Ghost text visible           | Accept autocomplete suggestion                                   |
+| `Shift+Tab`              | Ghost text visible           | Cycle to next suggestion                                         |
+| `Escape`                 | Ghost text visible           | Dismiss suggestion                                               |
+| `Enter`                  | Single-line, nothing open    | Submit (`onSubmit`)                                              |
+| `Cmd+Enter / Ctrl+Enter` | Multiline, nothing open      | Submit (`onSubmit`)                                              |
+| `Backspace`              | Cursor directly before a tag | First press highlights the tag. Second press deletes it.         |
 
 ---
 
@@ -305,7 +305,7 @@ You do not have to use this. Pass any filter logic you want.
 ### Local static list with fuzzy filter
 
 ```tsx
-import { SmartTextbox, fuzzyFilter } from 'fude'
+import { SmartTextbox, fuzzyFilter, getPlainText } from 'fude'
 ;<SmartTextbox
   value={segments}
   onChange={setSegments}
