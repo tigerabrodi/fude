@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { ChipContent } from './chip-content'
 import { ChipRootManager } from './chip-root-manager'
@@ -40,6 +40,15 @@ type CharacterBeforeCaret = {
   node: Text
   offset: number
 }
+
+type GhostAnchor = {
+  top: number
+  left: number
+  height: number
+}
+
+const DEFAULT_AUTOCOMPLETE_DELAY = 300
+const DEFAULT_TRAILING_LENGTH = 300
 
 function trimTrailingNewlines(segments: Array<Segment>): Array<Segment> {
   if (segments.length === 0) return segments
@@ -197,10 +206,41 @@ function getCharacterBeforeCaret(range: Range): CharacterBeforeCaret | null {
   return null
 }
 
+function toPlainTextForGhostInternal(segments: Array<Segment>): string {
+  return segments
+    .map((segment) =>
+      segment.type === 'text' ? segment.value : segment.item.searchValue
+    )
+    .join('')
+}
+
+function nodeHasVisibleContent(node: Node): boolean {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return stripChipSentinels(node.textContent ?? '').length > 0
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return false
+  }
+
+  const element = node as HTMLElement
+  if (element.hasAttribute(MENTION_ID_ATTR)) return true
+  if (element.tagName === 'BR') return true
+
+  for (const child of element.childNodes) {
+    if (nodeHasVisibleContent(child)) return true
+  }
+
+  return false
+}
+
 export function SmartTextbox({
   value,
   onChange,
   onFetchMentions,
+  onFetchSuggestions,
+  autocompleteDelay = DEFAULT_AUTOCOMPLETE_DELAY,
+  trailingLength = DEFAULT_TRAILING_LENGTH,
   onSubmit,
   placeholder,
   multiline,
@@ -211,6 +251,7 @@ export function SmartTextbox({
   defaultTagIcon,
   defaultTagDeleteIcon,
 }: SmartTextboxProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
   const storeRef = useRef(new MentionStore())
   const chipManagerRef = useRef(new ChipRootManager())
@@ -232,8 +273,18 @@ export function SmartTextbox({
   const mentionRangeRef = useRef<Range | null>(null)
   const mentionStartRef = useRef<MentionPoint | null>(null)
   const mentionDropdownRef = useRef<HTMLDivElement | null>(null)
+  const [ghostSuggestions, setGhostSuggestions] = useState<Array<string>>([])
+  const [ghostActiveIndex, setGhostActiveIndex] = useState(0)
+  const [ghostAnchor, setGhostAnchor] = useState<GhostAnchor | null>(null)
+  const [ghostTypography, setGhostTypography] = useState<CSSProperties>({})
   const isComposingRef = useRef(false)
+  const focusFromPointerRef = useRef(false)
   const deferredHeightSyncIdRef = useRef<number | null>(null)
+  const ghostDebounceIdRef = useRef<number | null>(null)
+  const ghostRequestIdRef = useRef(0)
+  const pendingChipManagerUnmountsRef = useRef<
+    Array<{ manager: ChipRootManager; timeoutId: number }>
+  >([])
 
   function setCaretVisible(visible: boolean): void {
     const editor = editorRef.current
@@ -249,6 +300,297 @@ export function SmartTextbox({
   function setMentionQueryValue(query: string): void {
     mentionQueryRef.current = query
     setMentionQuery(query)
+  }
+
+  function clearGhostDebounceTimer(): void {
+    if (ghostDebounceIdRef.current !== null) {
+      window.clearTimeout(ghostDebounceIdRef.current)
+      ghostDebounceIdRef.current = null
+    }
+  }
+
+  function clearGhostState(invalidateRequest = false): void {
+    clearGhostDebounceTimer()
+    if (invalidateRequest) {
+      ghostRequestIdRef.current += 1
+    }
+    setGhostSuggestions((previous) => (previous.length === 0 ? previous : []))
+    setGhostActiveIndex((previous) => (previous === 0 ? previous : 0))
+    setGhostAnchor((previous) => (previous === null ? previous : null))
+  }
+
+  function scheduleChipManagerUnmount(manager: ChipRootManager): void {
+    const timeoutId = window.setTimeout(() => {
+      manager.unmountAll()
+      pendingChipManagerUnmountsRef.current =
+        pendingChipManagerUnmountsRef.current.filter(
+          (entry) => entry.timeoutId !== timeoutId
+        )
+    }, 0)
+
+    pendingChipManagerUnmountsRef.current.push({ manager, timeoutId })
+  }
+
+  function flushPendingChipManagerUnmounts(): void {
+    const pending = pendingChipManagerUnmountsRef.current
+    if (pending.length === 0) return
+    pendingChipManagerUnmountsRef.current = []
+
+    for (const entry of pending) {
+      window.clearTimeout(entry.timeoutId)
+      entry.manager.unmountAll()
+    }
+  }
+
+  function getCollapsedSelectionRange(editor: HTMLElement): Range | null {
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return null
+    const range = selection.getRangeAt(0)
+    if (!range.collapsed) return null
+    if (!editor.contains(range.startContainer)) return null
+    return range
+  }
+
+  function isCaretAtVisualEnd(editor: HTMLElement, range: Range): boolean {
+    if (!range.collapsed) return false
+    if (!editor.contains(range.startContainer)) return false
+
+    const trailingRange = range.cloneRange()
+    try {
+      trailingRange.setEnd(editor, editor.childNodes.length)
+    } catch {
+      return false
+    }
+
+    const trailingFragment = trailingRange.cloneContents()
+    for (const child of trailingFragment.childNodes) {
+      if (nodeHasVisibleContent(child)) return false
+    }
+    return true
+  }
+
+  function updateGhostAnchorFromSelection(): boolean {
+    const editor = editorRef.current
+    const wrapper = wrapperRef.current
+    if (!editor || !wrapper) {
+      setGhostAnchor(null)
+      return false
+    }
+
+    const selectionRange = getCollapsedSelectionRange(editor)
+    if (!selectionRange) {
+      setGhostAnchor(null)
+      return false
+    }
+
+    let rect = selectionRange.getBoundingClientRect()
+    if (rect.width <= 0 && rect.height <= 0) {
+      const marker = document.createElement('span')
+      marker.textContent = CHIP_SENTINEL
+      marker.style.display = 'inline-block'
+      marker.style.width = '0'
+      marker.style.overflow = 'hidden'
+      marker.style.padding = '0'
+      marker.style.margin = '0'
+      marker.style.lineHeight = 'inherit'
+
+      const markerRange = selectionRange.cloneRange()
+      try {
+        markerRange.insertNode(marker)
+        rect = marker.getBoundingClientRect()
+
+        const selection = document.getSelection()
+        if (selection) {
+          const restoreRange = document.createRange()
+          restoreRange.setStartAfter(marker)
+          restoreRange.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(restoreRange)
+        }
+      } finally {
+        marker.remove()
+      }
+    }
+
+    const editorComputed = window.getComputedStyle(editor)
+    const parsedLineHeight = Number.parseFloat(editorComputed.lineHeight)
+    const fallbackLineHeight = Number.isFinite(parsedLineHeight)
+      ? parsedLineHeight
+      : 0
+    const height = Math.max(toFiniteNumber(rect.height), fallbackLineHeight)
+    const wrapperRect = wrapper.getBoundingClientRect()
+    const nextAnchor: GhostAnchor = {
+      top: toFiniteNumber(rect.top) - toFiniteNumber(wrapperRect.top),
+      left: toFiniteNumber(rect.left) - toFiniteNumber(wrapperRect.left),
+      height,
+    }
+
+    setGhostAnchor((previous) => {
+      if (
+        previous &&
+        Math.abs(previous.top - nextAnchor.top) < 0.5 &&
+        Math.abs(previous.left - nextAnchor.left) < 0.5 &&
+        Math.abs(previous.height - nextAnchor.height) < 0.5
+      ) {
+        return previous
+      }
+      return nextAnchor
+    })
+
+    return true
+  }
+
+  function syncGhostTypographyFromEditor(): void {
+    const editor = editorRef.current
+    if (!editor) return
+
+    const computed = window.getComputedStyle(editor)
+    const nextTypography: CSSProperties = {
+      fontFamily: computed.fontFamily,
+      fontSize: computed.fontSize,
+      fontWeight: computed.fontWeight,
+      fontStyle: computed.fontStyle,
+      lineHeight: computed.lineHeight,
+      letterSpacing: computed.letterSpacing,
+      textTransform: computed.textTransform,
+      textIndent: computed.textIndent,
+    }
+
+    setGhostTypography((previous) => {
+      if (
+        previous.fontFamily === nextTypography.fontFamily &&
+        previous.fontSize === nextTypography.fontSize &&
+        previous.fontWeight === nextTypography.fontWeight &&
+        previous.fontStyle === nextTypography.fontStyle &&
+        previous.lineHeight === nextTypography.lineHeight &&
+        previous.letterSpacing === nextTypography.letterSpacing &&
+        previous.textTransform === nextTypography.textTransform &&
+        previous.textIndent === nextTypography.textIndent
+      ) {
+        return previous
+      }
+      return nextTypography
+    })
+  }
+
+  function scheduleGhostFetch(segments: Array<Segment>): void {
+    clearGhostDebounceTimer()
+
+    if (!onFetchSuggestions) return
+    if (mentionIsOpenRef.current) return
+    if (isComposingRef.current) return
+
+    const editor = editorRef.current
+    if (!editor) return
+
+    const selectionRange = getCollapsedSelectionRange(editor)
+    if (!selectionRange || !isCaretAtVisualEnd(editor, selectionRange)) return
+
+    const effectiveTrailingLength = Math.max(1, trailingLength)
+    const plainText = toPlainTextForGhostInternal(segments)
+    const trailing = plainText.slice(-effectiveTrailingLength)
+    if (trailing.length === 0) return
+
+    const waitMs = Math.max(0, autocompleteDelay)
+    ghostDebounceIdRef.current = window.setTimeout(() => {
+      ghostDebounceIdRef.current = null
+      const requestId = ++ghostRequestIdRef.current
+
+      void onFetchSuggestions(trailing)
+        .then((rawSuggestions) => {
+          if (requestId !== ghostRequestIdRef.current) return
+          if (mentionIsOpenRef.current || isComposingRef.current) return
+
+          const currentEditor = editorRef.current
+          if (!currentEditor) return
+
+          const currentRange = getCollapsedSelectionRange(currentEditor)
+          if (
+            !currentRange ||
+            !isCaretAtVisualEnd(currentEditor, currentRange)
+          ) {
+            return
+          }
+
+          const normalizedSuggestions = (
+            Array.isArray(rawSuggestions) ? rawSuggestions : []
+          ).filter(
+            (value): value is string =>
+              typeof value === 'string' && value.length > 0
+          )
+
+          if (normalizedSuggestions.length === 0) {
+            setGhostSuggestions([])
+            setGhostActiveIndex(0)
+            setGhostAnchor(null)
+            return
+          }
+
+          const hasAnchor = updateGhostAnchorFromSelection()
+          if (!hasAnchor) {
+            setGhostSuggestions([])
+            setGhostActiveIndex(0)
+            setGhostAnchor(null)
+            return
+          }
+
+          syncGhostTypographyFromEditor()
+          setGhostSuggestions(normalizedSuggestions)
+          setGhostActiveIndex(0)
+        })
+        .catch(() => {
+          if (requestId !== ghostRequestIdRef.current) return
+          setGhostSuggestions([])
+          setGhostActiveIndex(0)
+          setGhostAnchor(null)
+        })
+    }, waitMs)
+  }
+
+  function acceptGhostSuggestion(): void {
+    const editor = editorRef.current
+    if (!editor) return
+    if (mentionIsOpenRef.current) return
+
+    const suggestion = ghostSuggestions[ghostActiveIndex] ?? ''
+    if (suggestion.length === 0) return
+
+    const selectionRange = getCollapsedSelectionRange(editor)
+    if (!selectionRange || !isCaretAtVisualEnd(editor, selectionRange)) return
+
+    editor.focus()
+
+    let wasInserted = false
+    if (typeof document.execCommand === 'function') {
+      try {
+        wasInserted = document.execCommand('insertText', false, suggestion)
+      } catch {
+        wasInserted = false
+      }
+    }
+
+    if (!wasInserted) {
+      const fallbackRange = selectionRange.cloneRange()
+      fallbackRange.deleteContents()
+      const textNode = document.createTextNode(suggestion)
+      fallbackRange.insertNode(textNode)
+
+      const selection = document.getSelection()
+      if (selection) {
+        const newRange = document.createRange()
+        newRange.setStart(textNode, suggestion.length)
+        newRange.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      }
+    }
+
+    clearGhostState(true)
+
+    const segments = normalizeSegments(serialize(editor, storeRef.current))
+    onChange(segments)
+    syncHeightAfterLayoutChange()
+    syncSingleLineCaretVisibilityDeferred()
   }
 
   function syncSingleLineCaretVisibility(): void {
@@ -290,6 +632,16 @@ export function SmartTextbox({
     }, 0)
   }
 
+  function placeCaretAtEditorEnd(editor: HTMLElement): void {
+    const selection = document.getSelection()
+    if (!selection) return
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
   function scheduleDeferredHeightSync(): void {
     if (!multiline) return
     if (deferredHeightSyncIdRef.current !== null) {
@@ -319,6 +671,7 @@ export function SmartTextbox({
     mentionLastFetchQueryRef.current = null
     mentionRangeRef.current = null
     mentionStartRef.current = null
+    clearGhostState(true)
     setMentionAnchorRect(null)
     setMentionItems([])
     setMentionActiveIndex(0)
@@ -405,6 +758,7 @@ export function SmartTextbox({
     }
     mentionRangeRef.current = mentionRange
     mentionLastFetchQueryRef.current = null
+    clearGhostState(true)
 
     setMentionOpen(true)
     setMentionQueryValue('')
@@ -751,8 +1105,6 @@ export function SmartTextbox({
     if (!editor) return
 
     const store = storeRef.current
-    const chipManager = chipManagerRef.current
-
     // Serialize the current DOM state to compare with incoming value
     const currentSegments = normalizeSegments(serialize(editor, store))
 
@@ -767,7 +1119,10 @@ export function SmartTextbox({
     if (mentionIsOpenRef.current) {
       closeMentionMode()
     }
-    chipManager.unmountAll()
+    clearGhostState(true)
+    const oldChipManager = chipManagerRef.current
+    chipManagerRef.current = new ChipRootManager()
+    scheduleChipManagerUnmount(oldChipManager)
     store.clear()
     editor.textContent = ''
     const fragment = deserialize(value, store)
@@ -827,21 +1182,54 @@ export function SmartTextbox({
     activeOption.scrollIntoView({ block: 'nearest' })
   }, [isMentionOpen, mentionActiveIndex, mentionItems.length])
 
+  useEffect(() => {
+    const activeGhostSuggestion = ghostSuggestions[ghostActiveIndex] ?? ''
+    if (
+      isMentionOpen ||
+      !ghostAnchor ||
+      ghostSuggestions.length === 0 ||
+      activeGhostSuggestion.length === 0
+    ) {
+      return
+    }
+
+    function syncGhostLayout(): void {
+      const hasAnchor = updateGhostAnchorFromSelection()
+      if (!hasAnchor) {
+        setGhostSuggestions([])
+        setGhostActiveIndex(0)
+        setGhostAnchor(null)
+        return
+      }
+      syncGhostTypographyFromEditor()
+    }
+
+    window.addEventListener('resize', syncGhostLayout)
+    window.addEventListener('scroll', syncGhostLayout, true)
+
+    return () => {
+      window.removeEventListener('resize', syncGhostLayout)
+      window.removeEventListener('scroll', syncGhostLayout, true)
+    }
+  })
+
   // ---------------------------------------------------------------------------
   // Cleanup on unmount
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const store = storeRef.current
-    const chipManager = chipManagerRef.current
     return () => {
       if (deferredHeightSyncIdRef.current !== null) {
         window.clearTimeout(deferredHeightSyncIdRef.current)
       }
+      clearGhostDebounceTimer()
+      flushPendingChipManagerUnmounts()
+      ghostRequestIdRef.current += 1
       mentionRequestIdRef.current += 1
       mentionRangeRef.current = null
       mentionStartRef.current = null
       mentionIsOpenRef.current = false
-      chipManager.unmountAll()
+      chipManagerRef.current.unmountAll()
       store.clear()
     }
   }, [])
@@ -867,6 +1255,8 @@ export function SmartTextbox({
     const editor = editorRef.current
     if (!editor) return
 
+    clearGhostState(true)
+
     const segments = normalizeSegments(serialize(editor, storeRef.current))
     onChange(segments)
     syncHeight()
@@ -878,9 +1268,11 @@ export function SmartTextbox({
       return
     }
 
-    if (onFetchMentions) {
-      openMentionFromCurrentCaret()
+    if (onFetchMentions && openMentionFromCurrentCaret()) {
+      return
     }
+
+    scheduleGhostFetch(segments)
   }
 
   // ---------------------------------------------------------------------------
@@ -934,6 +1326,32 @@ export function SmartTextbox({
       }
 
       // Mention mode owns key handling while open.
+      return
+    }
+
+    const hasVisibleGhost =
+      !isMentionOpen &&
+      ghostAnchor !== null &&
+      ghostActiveIndex >= 0 &&
+      ghostActiveIndex < ghostSuggestions.length &&
+      (ghostSuggestions[ghostActiveIndex] ?? '').length > 0
+
+    if (hasVisibleGhost && e.key === 'Tab') {
+      e.preventDefault()
+      if (e.shiftKey) {
+        setGhostActiveIndex((previous) => {
+          if (ghostSuggestions.length === 0) return 0
+          return (previous + 1) % ghostSuggestions.length
+        })
+      } else {
+        acceptGhostSuggestion()
+      }
+      return
+    }
+
+    if (hasVisibleGhost && e.key === 'Escape') {
+      e.preventDefault()
+      clearGhostState(true)
       return
     }
 
@@ -1016,10 +1434,33 @@ export function SmartTextbox({
   // ---------------------------------------------------------------------------
   function handleClick(): void {
     clearHighlight()
+    clearGhostState(true)
+  }
+
+  function handleMouseDown(): void {
+    focusFromPointerRef.current = true
+  }
+
+  function handleFocus(): void {
+    const editor = editorRef.current
+    if (!editor) return
+
+    const isFocusedViaPointer = focusFromPointerRef.current
+    focusFromPointerRef.current = false
+    if (isFocusedViaPointer) return
+
+    queueMicrotask(() => {
+      const currentEditor = editorRef.current
+      if (!currentEditor) return
+      placeCaretAtEditorEnd(currentEditor)
+      syncSingleLineCaretVisibility()
+    })
   }
 
   function handleBlur(): void {
+    focusFromPointerRef.current = false
     clearHighlight()
+    clearGhostState(true)
     closeMentionMode()
   }
 
@@ -1041,6 +1482,13 @@ export function SmartTextbox({
   const inputClassName = classNames?.input || undefined
 
   const isPlaceholderVisible = isEmpty(value)
+  const activeGhostSuggestion = ghostSuggestions[ghostActiveIndex] ?? ''
+  const isGhostVisible =
+    !isMentionOpen &&
+    ghostAnchor !== null &&
+    activeGhostSuggestion.length > 0 &&
+    ghostActiveIndex >= 0 &&
+    ghostActiveIndex < ghostSuggestions.length
   let mentionDropdownPortal: ReturnType<typeof createPortal> | null = null
 
   if (isMentionOpen && mentionAnchorRect && typeof document !== 'undefined') {
@@ -1131,13 +1579,18 @@ export function SmartTextbox({
           ...styles?.root,
         }}
       >
-        <div style={{ position: 'relative' }}>
+        <div
+          ref={wrapperRef}
+          style={{ position: 'relative', overflow: 'hidden' }}
+        >
           <div
             ref={editorRef}
             contentEditable
             suppressContentEditableWarning
             role="textbox"
             aria-multiline={multiline || undefined}
+            onMouseDown={handleMouseDown}
+            onFocus={handleFocus}
             onInput={handleInput}
             onKeyDown={handleKeyDown}
             onClick={handleClick}
@@ -1166,6 +1619,27 @@ export function SmartTextbox({
               }}
             >
               {placeholder}
+            </div>
+          )}
+          {isGhostVisible && ghostAnchor && (
+            <div
+              aria-hidden
+              className={classNames?.ghostText}
+              style={{
+                position: 'absolute',
+                top: ghostAnchor.top,
+                left: ghostAnchor.left,
+                minHeight: ghostAnchor.height,
+                pointerEvents: 'none',
+                userSelect: 'none',
+                whiteSpace: 'pre',
+                opacity: 0.35,
+                color: '#6E6E6E',
+                ...ghostTypography,
+                ...styles?.ghostText,
+              }}
+            >
+              {activeGhostSuggestion}
             </div>
           )}
         </div>

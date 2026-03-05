@@ -29,9 +29,9 @@ const mentionCatalog: Array<MentionItem> = [
   },
   {
     id: '5',
-    searchValue: 'smart-textbox.test.tsx',
-    label: 'smart-textbox.test.tsx',
-    tooltip: 'tests/smart-textbox.test.tsx',
+    searchValue: 'smart-textbox.ghost.test.tsx',
+    label: 'smart-textbox.ghost.test.tsx',
+    tooltip: 'tests/smart-textbox.ghost.test.tsx',
   },
   {
     id: '6',
@@ -84,6 +84,33 @@ function fetchMentions(query: string): Promise<Array<MentionItem>> {
     .slice(0, 8)
 
   return Promise.resolve(results)
+}
+
+function fetchSuggestions(trailing: string): Promise<Array<string>> {
+  const normalized = trailing.toLowerCase()
+  const trimmed = normalized.trim()
+  if (trimmed.length === 0 || trimmed.includes('@')) {
+    return Promise.resolve([])
+  }
+
+  const prefix = /\s$/.test(trailing) ? '' : ' '
+  const suggestions = new Set<string>()
+
+  if (trimmed.endsWith('fix')) {
+    suggestions.add(prefix + 'this')
+  }
+  if (trimmed.endsWith('review')) {
+    suggestions.add(prefix + 'this today')
+  }
+  if (trimmed.endsWith('make')) {
+    suggestions.add(prefix + 'it work')
+  }
+
+  suggestions.add(prefix + 'and make it work')
+  suggestions.add(prefix + 'with tests')
+  suggestions.add(prefix + 'today')
+
+  return Promise.resolve(Array.from(suggestions).slice(0, 4))
 }
 
 const multiChipScenarios: Array<{ name: string; value: Array<Segment> }> = [
@@ -165,9 +192,9 @@ const multiChipScenarios: Array<{ name: string; value: Array<Segment> }> = [
         type: 'mention',
         item: {
           id: '5',
-          searchValue: 'smart-textbox.test.tsx',
-          label: 'smart-textbox.test.tsx',
-          tooltip: 'tests/smart-textbox.test.tsx',
+          searchValue: 'smart-textbox.ghost.test.tsx',
+          label: 'smart-textbox.ghost.test.tsx',
+          tooltip: 'tests/smart-textbox.ghost.test.tsx',
         },
       },
       { type: 'text', value: ' then check ' },
@@ -359,6 +386,7 @@ export function App() {
           value={singleValue}
           onChange={setSingleValue}
           onFetchMentions={fetchMentions}
+          onFetchSuggestions={fetchSuggestions}
           onSubmit={(segments) =>
             setLastSubmit(JSON.stringify(segments, null, 2))
           }
@@ -374,6 +402,7 @@ export function App() {
           value={multiValue}
           onChange={setMultiValue}
           onFetchMentions={fetchMentions}
+          onFetchSuggestions={fetchSuggestions}
           onSubmit={(segments) =>
             setLastSubmit(JSON.stringify(segments, null, 2))
           }
@@ -419,6 +448,7 @@ export function App() {
           value={multiChipValue}
           onChange={setMultiChipValue}
           onFetchMentions={fetchMentions}
+          onFetchSuggestions={fetchSuggestions}
           onSubmit={(segments) =>
             setLastSubmit(JSON.stringify(segments, null, 2))
           }

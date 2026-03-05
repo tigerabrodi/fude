@@ -203,7 +203,7 @@ When `@` is first typed, `onFetchMentions("")` is called immediately. For every 
 | Prop                 | Type                                      | Default | Description                                                                                                                                                                                             |
 | -------------------- | ----------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `onFetchSuggestions` | `(trailing: string) => Promise<string[]>` | —       | Called after the user pauses typing. `trailing` is the last N characters of plain text (controlled by `trailingLength`). Return an array of suggestion strings. User can Shift+Tab through all of them. |
-| `autocompleteDelay`  | `number`                                  | `800`   | How long in ms the user must pause before we call `onFetchSuggestions`.                                                                                                                                 |
+| `autocompleteDelay`  | `number`                                  | `300`   | How long in ms the user must pause before we call `onFetchSuggestions`.                                                                                                                                 |
 | `trailingLength`     | `number`                                  | `300`   | How many trailing characters to pass to `onFetchSuggestions`. Keeps token usage low for AI calls.                                                                                                       |
 
 Autocomplete is paused while the `@` dropdown is open. The two features do not fight each other.
@@ -343,7 +343,7 @@ import { SmartTextbox, fuzzyFilter } from 'fude'
     const res = await openai.complete({ prompt: trailing, n: 3 })
     return res.choices.map((c) => c.text)
   }}
-  autocompleteDelay={800}
+  autocompleteDelay={300}
   trailingLength={300}
 />
 ```
