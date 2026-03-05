@@ -1,6 +1,90 @@
-import type { Segment } from 'fude'
+import type { MentionItem, Segment } from 'fude'
 import { SmartTextbox } from 'fude'
 import { useState } from 'react'
+
+const mentionCatalog: Array<MentionItem> = [
+  {
+    id: '1',
+    searchValue: 'use-image-drag.ts',
+    label: 'use-image-drag.ts',
+    tooltip: 'src/hooks/use-image-drag.ts',
+  },
+  {
+    id: '2',
+    searchValue: 'serializer.ts',
+    label: 'serializer.ts',
+    tooltip: 'src/serializer.ts',
+  },
+  {
+    id: '3',
+    searchValue: 'cursor-utils.ts',
+    label: 'cursor-utils.ts',
+    tooltip: 'src/cursor-utils.ts',
+  },
+  {
+    id: '4',
+    searchValue: 'smart-textbox.tsx',
+    label: 'smart-textbox.tsx',
+    tooltip: 'src/smart-textbox.tsx',
+  },
+  {
+    id: '5',
+    searchValue: 'smart-textbox.test.tsx',
+    label: 'smart-textbox.test.tsx',
+    tooltip: 'tests/smart-textbox.test.tsx',
+  },
+  {
+    id: '6',
+    searchValue: 'cursor-utils.test.ts',
+    label: 'cursor-utils.test.ts',
+    tooltip: 'tests/cursor-utils.test.ts',
+  },
+  {
+    id: '7',
+    searchValue: 'serializer.test.ts',
+    label: 'serializer.test.ts',
+    tooltip: 'tests/serializer.test.ts',
+  },
+  {
+    id: '8',
+    searchValue: 'README.md',
+    label: 'README.md',
+    tooltip: 'README.md',
+  },
+  {
+    id: '9',
+    searchValue: 'BUILDING.md',
+    label: 'BUILDING.md',
+    tooltip: 'BUILDING.md',
+  },
+  {
+    id: '10',
+    searchValue: 'index.ts',
+    label: 'index.ts',
+    tooltip: 'src/index.ts',
+  },
+]
+
+function fetchMentions(query: string): Promise<Array<MentionItem>> {
+  const normalized = query.trim().toLowerCase()
+  if (normalized.length === 0) {
+    return Promise.resolve(mentionCatalog.slice(0, 8))
+  }
+
+  const results = mentionCatalog
+    .filter((item) => {
+      const isSearchMatches = item.searchValue
+        .toLowerCase()
+        .includes(normalized)
+      const isLabelMatches =
+        typeof item.label === 'string' &&
+        item.label.toLowerCase().includes(normalized)
+      return isSearchMatches || isLabelMatches
+    })
+    .slice(0, 8)
+
+  return Promise.resolve(results)
+}
 
 const multiChipScenarios: Array<{ name: string; value: Array<Segment> }> = [
   {
@@ -274,6 +358,7 @@ export function App() {
         <SmartTextbox
           value={singleValue}
           onChange={setSingleValue}
+          onFetchMentions={fetchMentions}
           onSubmit={(segments) =>
             setLastSubmit(JSON.stringify(segments, null, 2))
           }
@@ -288,6 +373,7 @@ export function App() {
         <SmartTextbox
           value={multiValue}
           onChange={setMultiValue}
+          onFetchMentions={fetchMentions}
           onSubmit={(segments) =>
             setLastSubmit(JSON.stringify(segments, null, 2))
           }
@@ -332,6 +418,7 @@ export function App() {
         <SmartTextbox
           value={multiChipValue}
           onChange={setMultiChipValue}
+          onFetchMentions={fetchMentions}
           onSubmit={(segments) =>
             setLastSubmit(JSON.stringify(segments, null, 2))
           }

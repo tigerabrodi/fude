@@ -1,21 +1,44 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChipContent } from './chip-content'
 import { ChipRootManager } from './chip-root-manager'
 import {
   getChipBeforeCursor,
   highlightChip,
+  insertChipAtRange,
   unhighlightChip,
 } from './cursor-utils'
 import { MentionStore } from './mention-store'
 import { normalizeSegments } from './normalize-segments'
 import { segmentsEqual } from './segments-equal'
 import {
+  createChipSpan,
   deserialize,
   MENTION_ID_ATTR,
   serialize,
   stripChipSentinels,
 } from './serializer'
-import type { Segment, SmartTextboxProps } from './types'
+import type { MentionItem, Segment, SmartTextboxProps } from './types'
+
+type MentionPoint = {
+  node: Node
+  offset: number
+}
+
+type MentionRect = {
+  top: number
+  left: number
+  right: number
+  bottom: number
+  width: number
+  height: number
+}
+
+type CharacterBeforeCaret = {
+  char: string
+  node: Text
+  offset: number
+}
 
 function trimTrailingNewlines(segments: Array<Segment>): Array<Segment> {
   if (segments.length === 0) return segments
@@ -94,9 +117,84 @@ function collapseBoundaryDoubleSpace(marker: Comment): void {
   }
 }
 
+function containsWhitespace(value: string): boolean {
+  return /\s/.test(value)
+}
+
+function toFiniteNumber(value: number): number {
+  if (Number.isFinite(value)) return value
+  return 0
+}
+
+function toMentionRect(rect: DOMRect): MentionRect {
+  return {
+    top: toFiniteNumber(rect.top),
+    left: toFiniteNumber(rect.left),
+    right: toFiniteNumber(rect.right),
+    bottom: toFiniteNumber(rect.bottom),
+    width: toFiniteNumber(rect.width),
+    height: toFiniteNumber(rect.height),
+  }
+}
+
+function getRightmostEditableText(node: Node): Text | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node as Text
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return null
+  }
+
+  const element = node as HTMLElement
+  if (element.contentEditable === 'false') {
+    return null
+  }
+
+  for (let i = element.childNodes.length - 1; i >= 0; i -= 1) {
+    const text = getRightmostEditableText(element.childNodes[i])
+    if (text) return text
+  }
+
+  return null
+}
+
+function getCharacterBeforeCaret(range: Range): CharacterBeforeCaret | null {
+  const { startContainer, startOffset } = range
+
+  if (startContainer.nodeType === Node.TEXT_NODE) {
+    if (startOffset === 0) return null
+    const textNode = startContainer as Text
+    const text = textNode.textContent ?? ''
+    const char = text[startOffset - 1]
+    if (!char) return null
+    return { char, node: textNode, offset: startOffset - 1 }
+  }
+
+  if (startContainer.nodeType === Node.ELEMENT_NODE) {
+    if (startOffset === 0) return null
+    const element = startContainer as HTMLElement
+    const previous = element.childNodes[startOffset - 1]
+    if (!previous) return null
+
+    const textNode = getRightmostEditableText(previous)
+    if (!textNode) return null
+    const text = textNode.textContent ?? ''
+    if (text.length === 0) return null
+    return {
+      char: text[text.length - 1],
+      node: textNode,
+      offset: text.length - 1,
+    }
+  }
+
+  return null
+}
+
 export function SmartTextbox({
   value,
   onChange,
+  onFetchMentions,
   onSubmit,
   placeholder,
   multiline,
@@ -111,11 +209,287 @@ export function SmartTextbox({
   const storeRef = useRef(new MentionStore())
   const chipManagerRef = useRef(new ChipRootManager())
   const highlightedChipRef = useRef<HTMLSpanElement | null>(null)
+  const [isMentionOpen, setIsMentionOpen] = useState(false)
+  const mentionIsOpenRef = useRef(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const mentionQueryRef = useRef('')
+  const [mentionItems, setMentionItems] = useState<Array<MentionItem>>([])
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
+  const [mentionAnchorRect, setMentionAnchorRect] =
+    useState<MentionRect | null>(null)
+  const [mentionDropdownPosition, setMentionDropdownPosition] = useState({
+    top: 0,
+    left: 0,
+  })
+  const mentionRequestIdRef = useRef(0)
+  const mentionLastFetchQueryRef = useRef<string | null>(null)
+  const mentionRangeRef = useRef<Range | null>(null)
+  const mentionStartRef = useRef<MentionPoint | null>(null)
+  const mentionDropdownRef = useRef<HTMLDivElement | null>(null)
+  const isComposingRef = useRef(false)
 
   function setCaretVisible(visible: boolean): void {
     const editor = editorRef.current
     if (!editor) return
     editor.style.caretColor = visible ? '' : 'transparent'
+  }
+
+  function setMentionOpen(open: boolean): void {
+    mentionIsOpenRef.current = open
+    setIsMentionOpen(open)
+  }
+
+  function setMentionQueryValue(query: string): void {
+    mentionQueryRef.current = query
+    setMentionQuery(query)
+  }
+
+  function closeMentionMode(): void {
+    if (
+      !mentionIsOpenRef.current &&
+      !mentionStartRef.current &&
+      !mentionRangeRef.current
+    ) {
+      return
+    }
+
+    mentionRequestIdRef.current += 1
+    mentionLastFetchQueryRef.current = null
+    mentionRangeRef.current = null
+    mentionStartRef.current = null
+    setMentionAnchorRect(null)
+    setMentionItems([])
+    setMentionActiveIndex(0)
+    setMentionQueryValue('')
+    setMentionOpen(false)
+  }
+
+  async function fetchMentions(query: string): Promise<void> {
+    if (!onFetchMentions || !mentionIsOpenRef.current) return
+    if (mentionLastFetchQueryRef.current === query) return
+
+    mentionLastFetchQueryRef.current = query
+    const requestId = ++mentionRequestIdRef.current
+
+    try {
+      const items = await onFetchMentions(query)
+      if (
+        requestId !== mentionRequestIdRef.current ||
+        !mentionIsOpenRef.current
+      ) {
+        return
+      }
+
+      const normalizedItems = Array.isArray(items) ? items : []
+      setMentionItems(normalizedItems)
+      setMentionActiveIndex((previous) => {
+        if (normalizedItems.length === 0) return 0
+        return Math.min(previous, normalizedItems.length - 1)
+      })
+    } catch {
+      if (
+        requestId !== mentionRequestIdRef.current ||
+        !mentionIsOpenRef.current
+      ) {
+        return
+      }
+
+      setMentionItems([])
+      setMentionActiveIndex(0)
+    }
+  }
+
+  function openMentionFromCurrentCaret(): boolean {
+    const editor = editorRef.current
+    console.log('[fude mention] open attempt', {
+      hasOnFetch: Boolean(onFetchMentions),
+      isOpen: mentionIsOpenRef.current,
+    })
+
+    if (!editor || !onFetchMentions || mentionIsOpenRef.current) {
+      console.log(
+        '[fude mention] bail: missing editor/onFetch or already open',
+        {
+          hasEditor: Boolean(editor),
+          hasOnFetch: Boolean(onFetchMentions),
+          isOpen: mentionIsOpenRef.current,
+        }
+      )
+      return false
+    }
+
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) {
+      console.log('[fude mention] bail: no selection/range')
+      return false
+    }
+
+    const caretRange = selection.getRangeAt(0)
+    if (!caretRange.collapsed) {
+      console.log('[fude mention] bail: range not collapsed')
+      return false
+    }
+    if (!editor.contains(caretRange.startContainer)) {
+      console.log('[fude mention] bail: selection outside editor')
+      return false
+    }
+
+    const charBefore = getCharacterBeforeCaret(caretRange)
+    console.log('[fude mention] char before caret', charBefore)
+    if (!charBefore || charBefore.char !== '@') {
+      console.log('[fude mention] bail: char before caret is not @')
+      return false
+    }
+
+    const mentionRange = document.createRange()
+    try {
+      mentionRange.setStart(charBefore.node, charBefore.offset)
+      mentionRange.setEnd(caretRange.startContainer, caretRange.startOffset)
+    } catch {
+      console.log('[fude mention] bail: failed to build mention range')
+      return false
+    }
+
+    const triggerText = stripChipSentinels(mentionRange.toString())
+    console.log('[fude mention] trigger text', JSON.stringify(triggerText))
+    if (triggerText !== '@') {
+      console.log('[fude mention] bail: trigger text mismatch')
+      return false
+    }
+
+    mentionStartRef.current = {
+      node: charBefore.node,
+      offset: charBefore.offset,
+    }
+    mentionRangeRef.current = mentionRange
+    mentionLastFetchQueryRef.current = null
+
+    setMentionOpen(true)
+    setMentionQueryValue('')
+    setMentionItems([])
+    setMentionActiveIndex(0)
+    setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
+    void fetchMentions('')
+    console.log('[fude mention] opened')
+    return true
+  }
+
+  function refreshMentionQueryFromSelection(): void {
+    if (!mentionIsOpenRef.current) return
+
+    const editor = editorRef.current
+    const start = mentionStartRef.current
+    if (!editor || !start) {
+      closeMentionMode()
+      return
+    }
+
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) {
+      closeMentionMode()
+      return
+    }
+
+    const caretRange = selection.getRangeAt(0)
+    if (!caretRange.collapsed || !editor.contains(caretRange.startContainer)) {
+      closeMentionMode()
+      return
+    }
+
+    const mentionRange = document.createRange()
+    try {
+      mentionRange.setStart(start.node, start.offset)
+      mentionRange.setEnd(caretRange.startContainer, caretRange.startOffset)
+    } catch {
+      closeMentionMode()
+      return
+    }
+
+    const mentionText = stripChipSentinels(mentionRange.toString())
+    if (!mentionText.startsWith('@')) {
+      closeMentionMode()
+      return
+    }
+
+    const query = mentionText.slice(1)
+    if (containsWhitespace(query)) {
+      closeMentionMode()
+      return
+    }
+
+    mentionRangeRef.current = mentionRange
+    setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
+
+    if (query !== mentionQueryRef.current) {
+      setMentionQueryValue(query)
+      void fetchMentions(query)
+    }
+  }
+
+  function insertMentionItem(item: MentionItem): void {
+    const editor = editorRef.current
+    const mentionRange = mentionRangeRef.current
+    if (!editor || !mentionRange) return
+
+    clearHighlight()
+
+    const chip = createChipSpan(item.id)
+    storeRef.current.set(item)
+    insertChipAtRange(mentionRange.cloneRange(), chip)
+
+    renderAllChips()
+    editor.focus()
+
+    const segments = normalizeSegments(serialize(editor, storeRef.current))
+    onChange(segments)
+    syncHeight()
+    closeMentionMode()
+  }
+
+  function syncMentionDropdownPosition(): void {
+    if (!mentionIsOpenRef.current || !mentionAnchorRect) return
+
+    const dropdown = mentionDropdownRef.current
+    if (!dropdown) return
+
+    const viewportWidth =
+      window.innerWidth || document.documentElement.clientWidth
+    const viewportHeight =
+      window.innerHeight || document.documentElement.clientHeight
+    const dropdownRect = dropdown.getBoundingClientRect()
+    const dropdownWidth = toFiniteNumber(dropdownRect.width)
+    const dropdownHeight = toFiniteNumber(dropdownRect.height)
+
+    const minMargin = 8
+    const gap = 4
+
+    let left = mentionAnchorRect.left
+    let top = mentionAnchorRect.bottom + gap
+
+    if (left + dropdownWidth > viewportWidth - minMargin) {
+      left = Math.max(minMargin, viewportWidth - dropdownWidth - minMargin)
+    }
+
+    const canFlipAbove =
+      mentionAnchorRect.top - gap - dropdownHeight >= minMargin
+    if (top + dropdownHeight > viewportHeight - minMargin && canFlipAbove) {
+      top = mentionAnchorRect.top - gap - dropdownHeight
+    }
+
+    top = Math.min(top, viewportHeight - dropdownHeight - minMargin)
+    top = Math.max(minMargin, top)
+    left = Math.max(minMargin, left)
+    if (!Number.isFinite(top) || !Number.isFinite(left)) return
+
+    setMentionDropdownPosition((previous) => {
+      if (
+        Math.abs(previous.top - top) < 0.5 &&
+        Math.abs(previous.left - left) < 0.5
+      ) {
+        return previous
+      }
+      return { top, left }
+    })
   }
 
   // ---------------------------------------------------------------------------
@@ -185,6 +559,10 @@ export function SmartTextbox({
   function deleteChipSpan(chip: HTMLSpanElement): void {
     const editor = editorRef.current
     if (!editor) return
+
+    if (mentionIsOpenRef.current) {
+      closeMentionMode()
+    }
 
     const chipManager = chipManagerRef.current
     const store = storeRef.current
@@ -312,6 +690,9 @@ export function SmartTextbox({
     }
 
     // Different — clear and rebuild
+    if (mentionIsOpenRef.current) {
+      closeMentionMode()
+    }
     chipManager.unmountAll()
     store.clear()
     editor.textContent = ''
@@ -321,8 +702,45 @@ export function SmartTextbox({
 
     // Reset highlight on value change
     highlightedChipRef.current = null
+    setCaretVisible(true)
 
     syncHeight()
+  })
+
+  useEffect(() => {
+    if (!isMentionOpen) return
+
+    function syncAnchorFromRange(): void {
+      const mentionRange = mentionRangeRef.current
+      if (!mentionRange) return
+      setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
+    }
+
+    function handlePointerDown(event: PointerEvent): void {
+      const target = event.target
+      if (!target || !(target instanceof Node)) return
+
+      const editor = editorRef.current
+      const dropdown = mentionDropdownRef.current
+      if (editor?.contains(target)) return
+      if (dropdown?.contains(target)) return
+      closeMentionMode()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    window.addEventListener('resize', syncAnchorFromRange)
+    window.addEventListener('scroll', syncAnchorFromRange, true)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+      window.removeEventListener('resize', syncAnchorFromRange)
+      window.removeEventListener('scroll', syncAnchorFromRange, true)
+    }
+  })
+
+  useEffect(() => {
+    if (!isMentionOpen) return
+    syncMentionDropdownPosition()
   })
 
   // ---------------------------------------------------------------------------
@@ -332,6 +750,10 @@ export function SmartTextbox({
     const store = storeRef.current
     const chipManager = chipManagerRef.current
     return () => {
+      mentionRequestIdRef.current += 1
+      mentionRangeRef.current = null
+      mentionStartRef.current = null
+      mentionIsOpenRef.current = false
       chipManager.unmountAll()
       store.clear()
     }
@@ -361,12 +783,79 @@ export function SmartTextbox({
     const segments = normalizeSegments(serialize(editor, storeRef.current))
     onChange(segments)
     syncHeight()
+
+    if (isComposingRef.current) return
+    if (mentionIsOpenRef.current) {
+      refreshMentionQueryFromSelection()
+      return
+    }
+
+    if (onFetchMentions) {
+      openMentionFromCurrentCaret()
+    }
   }
 
   // ---------------------------------------------------------------------------
   // Key down — backspace + submit logic
   // ---------------------------------------------------------------------------
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
+    if (isComposingRef.current) return
+
+    if (mentionIsOpenRef.current) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionActiveIndex((previous) => {
+          if (mentionItems.length === 0) return 0
+          return (previous + 1) % mentionItems.length
+        })
+        return
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionActiveIndex((previous) => {
+          if (mentionItems.length === 0) return 0
+          return (previous - 1 + mentionItems.length) % mentionItems.length
+        })
+        return
+      }
+
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        const activeItem = mentionItems[mentionActiveIndex] ?? null
+        if (activeItem) {
+          insertMentionItem(activeItem)
+        }
+        return
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeMentionMode()
+        return
+      }
+
+      if (
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight' ||
+        e.key === 'Home' ||
+        e.key === 'End'
+      ) {
+        closeMentionMode()
+        return
+      }
+
+      // Mention mode owns key handling while open.
+      return
+    }
+
+    if (e.key === '@' && onFetchMentions) {
+      console.log('[fude mention] keydown @ detected, scheduling open check')
+      queueMicrotask(() => {
+        openMentionFromCurrentCaret()
+      })
+    }
+
     // --- Backspace: two-press chip deletion ---
     if (e.key === 'Backspace') {
       if (highlightedChipRef.current) {
@@ -444,6 +933,18 @@ export function SmartTextbox({
 
   function handleBlur(): void {
     clearHighlight()
+    closeMentionMode()
+  }
+
+  function handleCompositionStart(): void {
+    isComposingRef.current = true
+  }
+
+  function handleCompositionEnd(): void {
+    isComposingRef.current = false
+    if (mentionIsOpenRef.current) {
+      refreshMentionQueryFromSelection()
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -453,50 +954,134 @@ export function SmartTextbox({
   const inputClassName = classNames?.input || undefined
 
   const isPlaceholderVisible = isEmpty(value)
+  let mentionDropdownPortal: ReturnType<typeof createPortal> | null = null
 
-  return (
-    <div
-      className={rootClassName || undefined}
-      style={{
-        ...style,
-        ...styles?.root,
-      }}
-    >
-      <div style={{ position: 'relative' }}>
-        <div
-          ref={editorRef}
-          contentEditable
-          suppressContentEditableWarning
-          role="textbox"
-          aria-multiline={multiline || undefined}
-          onInput={handleInput}
-          onKeyDown={handleKeyDown}
-          onClick={handleClick}
-          onBlur={handleBlur}
-          className={inputClassName}
-          style={{
-            outline: 'none',
-            whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
-            overflowX: multiline ? undefined : 'hidden',
-            wordBreak: multiline ? 'break-word' : undefined,
-            ...styles?.input,
-          }}
-        />
-        {isPlaceholderVisible && (
+  if (isMentionOpen && mentionAnchorRect && typeof document !== 'undefined') {
+    mentionDropdownPortal = createPortal(
+      <div
+        ref={mentionDropdownRef}
+        role="listbox"
+        data-mention-query={mentionQuery}
+        className={classNames?.dropdown}
+        style={{
+          position: 'fixed',
+          top: mentionDropdownPosition.top,
+          left: mentionDropdownPosition.left,
+          minWidth: 220,
+          maxWidth: 320,
+          maxHeight: 220,
+          overflowY: 'auto',
+          border: '1px solid #2E2E2E',
+          borderRadius: 8,
+          backgroundColor: '#1C1C1C',
+          color: '#E5E5E5',
+          padding: 4,
+          zIndex: 1000,
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+          ...styles?.dropdown,
+        }}
+      >
+        {mentionItems.length === 0 && (
           <div
-            aria-hidden
             style={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              opacity: 0.5,
-              ...styles?.input,
+              padding: '8px 10px',
+              opacity: 0.7,
+              fontSize: 13,
             }}
           >
-            {placeholder}
+            {mentionQuery.length > 0
+              ? `No mentions for "${mentionQuery}"`
+              : 'No mentions'}
           </div>
         )}
+
+        {mentionItems.map((item, index) => {
+          const isActive = index === mentionActiveIndex
+          const icon = item.icon ?? defaultTagIcon
+          return (
+            <div
+              key={`${item.id}-${index}`}
+              role="option"
+              aria-selected={isActive}
+              className={classNames?.dropdownItem}
+              onMouseEnter={() => setMentionActiveIndex(index)}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                insertMentionItem(item)
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                borderRadius: 6,
+                padding: '8px 10px',
+                cursor: 'pointer',
+                backgroundColor: isActive ? '#2A2A2A' : 'transparent',
+                ...styles?.dropdownItem,
+              }}
+            >
+              {icon && (
+                <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+                  {icon}
+                </span>
+              )}
+              <span>{item.label}</span>
+            </div>
+          )
+        })}
+      </div>,
+      document.body
+    )
+  }
+
+  return (
+    <>
+      <div
+        className={rootClassName || undefined}
+        style={{
+          ...style,
+          ...styles?.root,
+        }}
+      >
+        <div style={{ position: 'relative' }}>
+          <div
+            ref={editorRef}
+            contentEditable
+            suppressContentEditableWarning
+            role="textbox"
+            aria-multiline={multiline || undefined}
+            onInput={handleInput}
+            onKeyDown={handleKeyDown}
+            onClick={handleClick}
+            onBlur={handleBlur}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
+            className={inputClassName}
+            style={{
+              outline: 'none',
+              whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
+              overflowX: multiline ? undefined : 'hidden',
+              wordBreak: multiline ? 'break-word' : undefined,
+              ...styles?.input,
+            }}
+          />
+          {isPlaceholderVisible && (
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute',
+                inset: 0,
+                pointerEvents: 'none',
+                opacity: 0.5,
+                ...styles?.input,
+              }}
+            >
+              {placeholder}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      {mentionDropdownPortal}
+    </>
   )
 }

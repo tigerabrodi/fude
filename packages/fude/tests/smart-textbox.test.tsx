@@ -1,10 +1,13 @@
 // @vitest-environment happy-dom
 
-import { act, fireEvent, render } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { useState } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MENTION_ID_ATTR } from '../src/serializer'
 import { SmartTextbox } from '../src/smart-textbox'
-import type { MentionItem, Segment } from '../src/types'
+import type { MentionItem, Segment, SmartTextboxProps } from '../src/types'
+
+type MentionFetcher = (query: string) => Promise<Array<MentionItem>>
 
 function createItem(id: string, name: string): MentionItem {
   return { id, searchValue: name, label: name }
@@ -18,6 +21,61 @@ function setCursorAt(node: Node, offset: number): void {
   selection.removeAllRanges()
   selection.addRange(range)
 }
+
+function replaceEditorText(editor: Element, value: string): Text {
+  editor.textContent = ''
+  const textNode = document.createTextNode(value)
+  editor.appendChild(textNode)
+  setCursorAt(textNode, value.length)
+  return textNode
+}
+
+function updateTextNodeValue(node: Text, value: string): void {
+  node.textContent = value
+  setCursorAt(node, value.length)
+}
+
+async function flushAsyncUpdates(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve()
+  })
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
+function MentionTestHarness({
+  onFetchMentions,
+  onChangeSpy,
+}: {
+  onFetchMentions?: SmartTextboxProps['onFetchMentions']
+  onChangeSpy?: (segments: Array<Segment>) => void
+}) {
+  const [value, setValue] = useState<Array<Segment>>([])
+  return (
+    <SmartTextbox
+      value={value}
+      onChange={(segments) => {
+        setValue(segments)
+        onChangeSpy?.(segments)
+      }}
+      onFetchMentions={onFetchMentions}
+      multiline
+    />
+  )
+}
+
+afterEach(() => {
+  cleanup()
+})
 
 // ---------------------------------------------------------------------------
 // Rendering
@@ -400,6 +458,233 @@ describe('onSubmit', () => {
     const editor = container.querySelector('[role="textbox"]')!
     // Should not throw
     fireEvent.keyDown(editor, { key: 'Enter' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// @ mention dropdown
+// ---------------------------------------------------------------------------
+
+describe('@ mention dropdown', () => {
+  it('opens dropdown and fetches mentions when @ is typed', async () => {
+    const onFetchMentions = vi
+      .fn<MentionFetcher>()
+      .mockResolvedValue([createItem('1', 'alpha.ts')])
+
+    const { container } = render(
+      <MentionTestHarness onFetchMentions={onFetchMentions} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    expect(onFetchMentions).toHaveBeenCalledWith('')
+    expect(document.body.querySelector('[role="listbox"]')).not.toBeNull()
+    expect(document.body.textContent).toContain('alpha.ts')
+  })
+
+  it('ignores stale mention responses and keeps latest query results', async () => {
+    const slow = createDeferred<Array<MentionItem>>()
+    const fast = createDeferred<Array<MentionItem>>()
+    const onFetchMentions = vi.fn((query: string) => {
+      if (query === '') return Promise.resolve([])
+      if (query === 'a') return slow.promise
+      if (query === 'ab') return fast.promise
+      return Promise.resolve([])
+    })
+
+    const { container } = render(
+      <MentionTestHarness onFetchMentions={onFetchMentions} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+
+    const queryNode = replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    updateTextNodeValue(queryNode, '@a')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    updateTextNodeValue(queryNode, '@ab')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    expect(onFetchMentions.mock.calls.map((call) => call[0])).toEqual([
+      '',
+      'a',
+      'ab',
+    ])
+
+    fast.resolve([createItem('2', 'fresh-result')])
+    await flushAsyncUpdates()
+    expect(document.body.textContent).toContain('fresh-result')
+
+    slow.resolve([createItem('3', 'stale-result')])
+    await flushAsyncUpdates()
+    expect(document.body.textContent).toContain('fresh-result')
+    expect(document.body.textContent).not.toContain('stale-result')
+  })
+
+  it('supports arrow navigation + Enter insertion for active mention', async () => {
+    const onChange = vi.fn()
+    const first = createItem('1', 'alpha.ts')
+    const second = createItem('2', 'beta.ts')
+    const onFetchMentions = vi
+      .fn<MentionFetcher>()
+      .mockResolvedValue([first, second])
+
+    const { container } = render(
+      <MentionTestHarness
+        onFetchMentions={onFetchMentions}
+        onChangeSpy={onChange}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    fireEvent.keyDown(editor, { key: 'ArrowDown' })
+    fireEvent.keyDown(editor, { key: 'Enter' })
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+    expect(lastCall).toEqual([{ type: 'mention', item: second }])
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  it('inserts the active mention on Tab', async () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'alpha.ts')
+    const onFetchMentions = vi.fn<MentionFetcher>().mockResolvedValue([item])
+
+    const { container } = render(
+      <MentionTestHarness
+        onFetchMentions={onFetchMentions}
+        onChangeSpy={onChange}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    fireEvent.keyDown(editor, { key: 'Tab' })
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+    expect(lastCall).toEqual([{ type: 'mention', item }])
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  it('closes dropdown on Escape and keeps typed @query text', async () => {
+    const onFetchMentions = vi
+      .fn<MentionFetcher>()
+      .mockResolvedValue([createItem('1', 'alpha.ts')])
+
+    const { container } = render(
+      <MentionTestHarness onFetchMentions={onFetchMentions} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const queryNode = replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    updateTextNodeValue(queryNode, '@a')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    fireEvent.keyDown(editor, { key: 'Escape' })
+
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+    expect(editor.textContent).toBe('@a')
+  })
+
+  it('inserts mention on dropdown mouse selection', async () => {
+    const onChange = vi.fn()
+    const first = createItem('1', 'alpha.ts')
+    const second = createItem('2', 'beta.ts')
+    const onFetchMentions = vi
+      .fn<MentionFetcher>()
+      .mockResolvedValue([first, second])
+
+    const { container } = render(
+      <MentionTestHarness
+        onFetchMentions={onFetchMentions}
+        onChangeSpy={onChange}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    const options = document.body.querySelectorAll('[role="option"]')
+    expect(options.length).toBeGreaterThan(1)
+    fireEvent.mouseEnter(options[1])
+    fireEvent.mouseDown(options[1])
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+    expect(lastCall).toEqual([{ type: 'mention', item: second }])
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  it('closes dropdown on blur and outside click', async () => {
+    const onFetchMentions = vi
+      .fn<MentionFetcher>()
+      .mockResolvedValue([createItem('1', 'alpha.ts')])
+
+    const { container } = render(
+      <MentionTestHarness onFetchMentions={onFetchMentions} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const queryNode = replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+    expect(document.body.querySelector('[role="listbox"]')).not.toBeNull()
+
+    fireEvent.blur(editor)
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+
+    updateTextNodeValue(queryNode, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+    expect(document.body.querySelector('[role="listbox"]')).not.toBeNull()
+
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    fireEvent.pointerDown(outside)
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+    outside.remove()
+  })
+
+  it('does not open mention mode when onFetchMentions is missing', async () => {
+    const { container } = render(
+      <SmartTextbox value={[]} onChange={() => {}} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull()
   })
 })
 
