@@ -387,12 +387,13 @@ export function SmartTextbox({
     if (rect.width <= 0 && rect.height <= 0) {
       const marker = document.createElement('span')
       marker.textContent = CHIP_SENTINEL
-      marker.style.display = 'inline-block'
-      marker.style.width = '0'
-      marker.style.overflow = 'hidden'
+      marker.style.display = 'inline'
       marker.style.padding = '0'
       marker.style.margin = '0'
       marker.style.lineHeight = 'inherit'
+      marker.style.verticalAlign = 'top'
+      marker.style.opacity = '0'
+      marker.style.pointerEvents = 'none'
 
       const markerRange = selectionRange.cloneRange()
       try {
@@ -417,10 +418,21 @@ export function SmartTextbox({
     const fallbackLineHeight = Number.isFinite(parsedLineHeight)
       ? parsedLineHeight
       : 0
+    const rectHeight = toFiniteNumber(rect.height)
     const height = Math.max(toFiniteNumber(rect.height), fallbackLineHeight)
     const wrapperRect = wrapper.getBoundingClientRect()
+    let top = toFiniteNumber(rect.top) - toFiniteNumber(wrapperRect.top)
+    if (
+      fallbackLineHeight > 0 &&
+      rectHeight > 0 &&
+      rectHeight < fallbackLineHeight
+    ) {
+      // Some engines return glyph box height instead of line box height for
+      // collapsed ranges. Shift up so ghost text shares the same baseline.
+      top -= (fallbackLineHeight - rectHeight) / 2
+    }
     const nextAnchor: GhostAnchor = {
-      top: toFiniteNumber(rect.top) - toFiniteNumber(wrapperRect.top),
+      top,
       left: toFiniteNumber(rect.left) - toFiniteNumber(wrapperRect.left),
       height,
     }
