@@ -28,6 +28,7 @@ import {
   collapseBoundaryDoubleSpace,
   isEmpty,
   isRemovablePostChipArtifact,
+  normalizePastedPlainText,
   startsWithWhitespace,
   trimTrailingNewlines,
 } from './smart-textbox-utils'
@@ -64,6 +65,7 @@ export function SmartTextbox({
   const pendingChipManagerUnmountsRef = useRef<
     Array<{ manager: ChipRootManager; timeoutId: number }>
   >([])
+  const pendingPasteCommitRef = useRef(false)
   const clearGhostStateRef = useRef<(invalidateRequest?: boolean) => void>(
     () => {
       // placeholder until ghost controller is initialized
@@ -97,6 +99,15 @@ export function SmartTextbox({
       window.clearTimeout(entry.timeoutId)
       entry.manager.unmountAll()
     }
+  }
+
+  function getSelectionRangeInsideEditor(editor: HTMLElement): Range | null {
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return null
+    const range = selection.getRangeAt(0)
+    if (!editor.contains(range.startContainer)) return null
+    if (!editor.contains(range.endContainer)) return null
+    return range
   }
 
   function syncSingleLineCaretVisibility(): void {
@@ -171,6 +182,30 @@ export function SmartTextbox({
 
     editor.style.height = 'auto'
     editor.style.height = editor.scrollHeight + 'px'
+  }
+
+  function commitEditorChangeAfterMutation(): void {
+    const editor = editorRef.current
+    if (!editor) return
+
+    ghost.clearGhostState(true)
+
+    const segments = normalizeSegments(serialize(editor, storeRef.current))
+    onChange(segments)
+    syncHeight()
+    syncSingleLineCaretVisibility()
+
+    if (isComposingRef.current) return
+    if (mention.mentionIsOpenRef.current) {
+      mention.refreshMentionQueryFromSelection()
+      return
+    }
+
+    if (onFetchMentions && mention.openMentionFromCurrentCaret()) {
+      return
+    }
+
+    ghost.scheduleGhostFetch(segments)
   }
 
   function insertMentionItem(item: MentionItem, mentionRange: Range): void {
@@ -473,6 +508,7 @@ export function SmartTextbox({
   useEffect(() => {
     const store = storeRef.current
     return () => {
+      pendingPasteCommitRef.current = false
       if (deferredHeightSyncIdRef.current !== null) {
         window.clearTimeout(deferredHeightSyncIdRef.current)
       }
@@ -487,28 +523,60 @@ export function SmartTextbox({
   // ---------------------------------------------------------------------------
   function handleInput(): void {
     clearHighlight()
+    pendingPasteCommitRef.current = false
+    commitEditorChangeAfterMutation()
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLDivElement>): void {
+    clearHighlight()
 
     const editor = editorRef.current
     if (!editor) return
 
-    ghost.clearGhostState(true)
+    const pastedText = e.clipboardData?.getData('text/plain') ?? ''
+    e.preventDefault()
+    const normalizedText = normalizePastedPlainText(pastedText, multiline)
+    if (normalizedText.length === 0) return
 
-    const segments = normalizeSegments(serialize(editor, storeRef.current))
-    onChange(segments)
-    syncHeight()
-    syncSingleLineCaretVisibility()
+    editor.focus()
 
-    if (isComposingRef.current) return
-    if (mention.mentionIsOpenRef.current) {
-      mention.refreshMentionQueryFromSelection()
+    let wasInserted = false
+    if (typeof document.execCommand === 'function') {
+      try {
+        wasInserted = document.execCommand('insertText', false, normalizedText)
+      } catch {
+        wasInserted = false
+      }
+    }
+
+    if (wasInserted) {
+      pendingPasteCommitRef.current = true
+      queueMicrotask(() => {
+        if (!pendingPasteCommitRef.current) return
+        pendingPasteCommitRef.current = false
+        commitEditorChangeAfterMutation()
+      })
       return
     }
 
-    if (onFetchMentions && mention.openMentionFromCurrentCaret()) {
-      return
+    const selectionRange = getSelectionRangeInsideEditor(editor)
+    if (!selectionRange) return
+
+    const fallbackRange = selectionRange.cloneRange()
+    fallbackRange.deleteContents()
+    const textNode = document.createTextNode(normalizedText)
+    fallbackRange.insertNode(textNode)
+
+    const selection = document.getSelection()
+    if (selection) {
+      const newRange = document.createRange()
+      newRange.setStart(textNode, normalizedText.length)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
     }
 
-    ghost.scheduleGhostFetch(segments)
+    commitEditorChangeAfterMutation()
   }
 
   // ---------------------------------------------------------------------------
@@ -676,6 +744,7 @@ export function SmartTextbox({
             onMouseDown={handleMouseDown}
             onFocus={handleFocus}
             onInput={handleInput}
+            onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             onClick={handleClick}
             onBlur={handleBlur}

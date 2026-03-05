@@ -201,3 +201,16 @@ export function nodeHasVisibleContent(node: Node): boolean {
 
   return false
 }
+
+export function normalizePastedPlainText(
+  value: string,
+  multiline?: boolean
+): string {
+  const withoutTrailingLineBreaks = value.replace(/(?:\r\n|\r|\n)+$/, '')
+  if (multiline) {
+    // Most clipboard payloads include terminal line breaks when copying full lines.
+    // Trim trailing line breaks so paste caret lands at the end of visible content.
+    return withoutTrailingLineBreaks
+  }
+  return withoutTrailingLineBreaks.replace(/\r\n|\r|\n/g, ' ')
+}
