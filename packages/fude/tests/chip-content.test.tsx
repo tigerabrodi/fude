@@ -218,4 +218,19 @@ describe('ChipContent', () => {
     const innerSpan = container.querySelector('span > span') as HTMLElement
     expect(innerSpan.style.boxShadow).toBe('')
   })
+
+  it('does not force default visual inline styles when classNames.tag is provided', () => {
+    const item = createItem('1', 'file.ts')
+    const { container } = render(
+      <ChipContent
+        item={item}
+        classNames={{ tag: 'rounded-md p-1 border' }}
+        onDelete={() => {}}
+      />
+    )
+
+    const innerSpan = container.querySelector('span > span') as HTMLElement
+    expect(innerSpan.style.padding).toBe('')
+    expect(innerSpan.style.backgroundColor).toBe('')
+  })
 })

@@ -41,6 +41,7 @@ export type MentionItem = {
 export type SmartTextboxClassNames = {
   root?: string
   input?: string
+  tagWrapper?: string
   tag?: string
   tagIcon?: string
   tagDeleteIcon?: string

@@ -238,6 +238,7 @@ Autocomplete is paused while the `@` dropdown is open. The two features do not f
 type SmartTextboxClassNames = {
   root?: string
   input?: string
+  tagWrapper?: string
   tag?: string
   tagIcon?: string
   tagDeleteIcon?: string
@@ -249,6 +250,10 @@ type SmartTextboxClassNames = {
 
 // styles has the same keys but values are CSSProperties
 ```
+
+`tagWrapper` targets the outer chip wrapper (`inline-block` container). `tag` targets the inner visible chip shell.
+
+When `classNames.tag` is provided, built-in visual inline chip styles (padding/background/border/colors/fonts) are not forced, so utility classes can style the chip shell directly.
 
 #### Styling priority
 

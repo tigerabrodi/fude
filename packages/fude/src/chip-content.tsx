@@ -77,10 +77,16 @@ const chipStyles: CSSProperties = {
   lineHeight: 1,
 }
 
-const chipInnerStyles: CSSProperties = {
+const chipInnerLayoutStyles: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6,
+  verticalAlign: 'text-bottom',
+  lineHeight: 1.1,
+  whiteSpace: 'nowrap',
+}
+
+const chipInnerVisualStyles: CSSProperties = {
   backgroundColor: '#1C1C1C',
   borderWidth: 1,
   borderStyle: 'solid',
@@ -92,9 +98,6 @@ const chipInnerStyles: CSSProperties = {
   fontFamily:
     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
   cursor: 'default',
-  verticalAlign: 'text-bottom',
-  lineHeight: 1.1,
-  whiteSpace: 'nowrap',
 }
 
 const chipInnerHoverStyles: CSSProperties = {
@@ -196,22 +199,28 @@ export function ChipContent({
   const deleteIcon =
     item.deleteIcon ?? defaultTagDeleteIcon ?? DEFAULT_DELETE_ICON
 
+  const hasTagClassOverride = Boolean(classNames?.tag)
   const mergedInnerStyles: CSSProperties = {
-    ...chipInnerStyles,
-    ...(isHovered ? chipInnerHoverStyles : undefined),
+    ...chipInnerLayoutStyles,
+    ...(!hasTagClassOverride ? chipInnerVisualStyles : undefined),
+    ...(!hasTagClassOverride && isHovered ? chipInnerHoverStyles : undefined),
     ...(highlighted ? highlightedStyles : undefined),
     ...styles?.tag,
   }
+  const mergedWrapperStyles: CSSProperties & { [key: string]: string } = {
+    ...chipStyles,
+    ...(styles?.tagWrapper as CSSProperties),
+  } as CSSProperties & { [key: string]: string }
 
   return (
     <span
       ref={rootRef}
-      style={chipStyles}
-      className={classNames?.tag}
+      style={mergedWrapperStyles}
+      className={classNames?.tagWrapper as string}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <span style={mergedInnerStyles}>
+      <span style={mergedInnerStyles} className={classNames?.tag}>
         {/* Icon slot — shows delete icon on hover, normal icon otherwise */}
         <span
           style={iconSlotStyles}

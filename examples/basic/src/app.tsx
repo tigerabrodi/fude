@@ -312,7 +312,7 @@ const tailwindThemes: Array<TailwindTheme> = [
       root: 'ring-1 ring-emerald-500/25',
       input:
         'min-h-24 p-3 font-mono text-emerald-200 caret-emerald-300 tracking-tight placeholder:text-emerald-600/80',
-      tag: 'rounded-md border border-emerald-400/50 bg-slate-900 text-emerald-100',
+      tag: 'rounded-md border border-emerald-400/50 bg-slate-900 text-emerald-100 py-1 px-2',
       tagIcon: 'text-emerald-300',
       tagDeleteIcon: 'text-rose-300',
       dropdown:

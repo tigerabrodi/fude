@@ -81,6 +81,7 @@ describe('chip rendering', () => {
         value={value}
         onChange={() => {}}
         classNames={{
+          tagWrapper: 'chip-tag-wrapper-a',
           tag: 'chip-tag-a',
           tagIcon: 'chip-icon-a',
           tagDeleteIcon: 'chip-delete-a',
@@ -96,10 +97,10 @@ describe('chip rendering', () => {
     await act(() => Promise.resolve())
 
     const chip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
-    const tagWrapper = chip.querySelector('.chip-tag-a') as HTMLElement
+    const tagWrapper = chip.querySelector('.chip-tag-wrapper-a') as HTMLElement
     expect(tagWrapper).not.toBeNull()
 
-    const inner = tagWrapper.querySelector('span') as HTMLElement
+    const inner = tagWrapper.querySelector('.chip-tag-a') as HTMLElement
     expect(inner.style.backgroundColor).toBe('rgb(1, 2, 3)')
 
     const iconSlotBeforeHover = chip.querySelector('.chip-icon-a')
@@ -117,6 +118,7 @@ describe('chip rendering', () => {
         value={value}
         onChange={() => {}}
         classNames={{
+          tagWrapper: 'chip-tag-wrapper-b',
           tag: 'chip-tag-b',
           tagIcon: 'chip-icon-b',
           tagDeleteIcon: 'chip-delete-b',
@@ -133,11 +135,13 @@ describe('chip rendering', () => {
 
     const updatedChip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
     const updatedTagWrapper = updatedChip.querySelector(
-      '.chip-tag-b'
+      '.chip-tag-wrapper-b'
     ) as HTMLElement
     expect(updatedTagWrapper).not.toBeNull()
-    expect(updatedChip.querySelector('.chip-tag-a')).toBeNull()
-    const updatedInner = updatedTagWrapper.querySelector('span') as HTMLElement
+    expect(updatedChip.querySelector('.chip-tag-wrapper-a')).toBeNull()
+    const updatedInner = updatedTagWrapper.querySelector(
+      '.chip-tag-b'
+    ) as HTMLElement
     expect(updatedInner.style.backgroundColor).toBe('rgb(9, 8, 7)')
   })
 
