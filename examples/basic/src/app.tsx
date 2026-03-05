@@ -7,17 +7,26 @@ import {
   createTailwindValues,
   formatDebugBlock,
 } from './app-utils'
+import { PaperDesignTab } from './paper-design-tab'
 import { PlaygroundDebugTab } from './playground-debug-tab'
 import { TailwindStylesTab } from './tailwind-styles-tab'
 
-type TabKey = 'tailwind' | 'playground'
+type TabKey = 'paper' | 'tailwind' | 'playground'
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>('tailwind')
+  const [activeTab, setActiveTab] = useState<TabKey>('paper')
   const [tailwindValues, setTailwindValues] = useState<
     Record<string, Array<Segment>>
   >(() => createTailwindValues())
 
+  const [paperValue, setPaperValue] = useState<Array<Segment>>([
+    { type: 'text', value: 'lets fix ' },
+    {
+      type: 'mention',
+      item: { ...mentionCatalog[0] },
+    },
+    { type: 'text', value: ' and make it work' },
+  ])
   const [singleValue, setSingleValue] = useState<Array<Segment>>([])
   const [multiValue, setMultiValue] = useState<Array<Segment>>([
     { type: 'text', value: 'lets fix ' },
@@ -93,6 +102,17 @@ export function App() {
         <div className="mb-8 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
           <button
             type="button"
+            onClick={() => setActiveTab('paper')}
+            className={`${tabButtonClassName} ${
+              activeTab === 'paper'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            Paper Design
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('tailwind')}
             className={`${tabButtonClassName} ${
               activeTab === 'tailwind'
@@ -115,7 +135,9 @@ export function App() {
           </button>
         </div>
 
-        {activeTab === 'tailwind' ? (
+        {activeTab === 'paper' ? (
+          <PaperDesignTab value={paperValue} onChange={setPaperValue} />
+        ) : activeTab === 'tailwind' ? (
           <TailwindStylesTab
             tailwindValues={tailwindValues}
             onThemeValueChange={setTailwindThemeValue}
