@@ -187,6 +187,29 @@ function formatTextSegmentLengths(segments: Array<Segment>): string {
   return lengths.length > 0 ? lengths.join(', ') : 'none'
 }
 
+function formatDebugBlock(label: string, segments: Array<Segment>): string {
+  return `${label} text lengths: ${formatTextSegmentLengths(segments)}\n\n${formatSegmentsForDebug(
+    segments
+  )}`
+}
+
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand('copy')
+  textarea.remove()
+}
+
 export function App() {
   const [singleValue, setSingleValue] = useState<Array<Segment>>([])
   const [multiValue, setMultiValue] = useState<Array<Segment>>([
@@ -206,6 +229,39 @@ export function App() {
     cloneSegments(multiChipScenarios[1].value)
   )
   const [lastSubmit, setLastSubmit] = useState<string>('')
+  const [activeScenarioName, setActiveScenarioName] = useState<string>(
+    multiChipScenarios[1].name
+  )
+  const [copyStatus, setCopyStatus] = useState<string>('')
+
+  const singleDebug = formatDebugBlock('Single-line', singleValue)
+  const multilineDebug = formatDebugBlock('Multiline', multiValue)
+  const multiChipDebug = formatDebugBlock(
+    `Multi-chip (${activeScenarioName})`,
+    multiChipValue
+  )
+
+  async function handleCopy(which: 'multiline' | 'multiChip' | 'all') {
+    let payload = `${singleDebug}\n\n${multilineDebug}\n\n${multiChipDebug}`
+    if (which === 'multiline') {
+      payload = multilineDebug
+    } else if (which === 'multiChip') {
+      payload = multiChipDebug
+    }
+
+    try {
+      await copyText(payload)
+      if (which === 'all') {
+        setCopyStatus('Copied full debug snapshot.')
+      } else if (which === 'multiline') {
+        setCopyStatus('Copied multiline debug.')
+      } else {
+        setCopyStatus('Copied multi-chip debug.')
+      }
+    } catch {
+      setCopyStatus('Copy failed. Please copy from the debug blocks manually.')
+    }
+  }
 
   return (
     <div
@@ -256,7 +312,10 @@ export function App() {
             <button
               key={scenario.name}
               type="button"
-              onClick={() => setMultiChipValue(cloneSegments(scenario.value))}
+              onClick={() => {
+                setActiveScenarioName(scenario.name)
+                setMultiChipValue(cloneSegments(scenario.value))
+              }}
               style={{
                 border: '1px solid #bbb',
                 borderRadius: 6,
@@ -302,6 +361,59 @@ export function App() {
 
       <section style={{ marginTop: 24 }}>
         <h3>Current values (debug)</h3>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => void handleCopy('multiline')}
+            style={{
+              border: '1px solid #bbb',
+              borderRadius: 6,
+              padding: '4px 10px',
+              background: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            Copy multiline debug
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCopy('multiChip')}
+            style={{
+              border: '1px solid #bbb',
+              borderRadius: 6,
+              padding: '4px 10px',
+              background: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            Copy multi-chip debug
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCopy('all')}
+            style={{
+              border: '1px solid #bbb',
+              borderRadius: 6,
+              padding: '4px 10px',
+              background: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            Copy all debug
+          </button>
+        </div>
+        {copyStatus && (
+          <p style={{ marginTop: 0, marginBottom: 12, fontSize: 13 }}>
+            {copyStatus}
+          </p>
+        )}
         <p>
           <strong>Single-line text lengths:</strong>{' '}
           {formatTextSegmentLengths(singleValue)}
