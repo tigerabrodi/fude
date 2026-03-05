@@ -2,6 +2,121 @@ import type { Segment } from 'fude'
 import { SmartTextbox } from 'fude'
 import { useState } from 'react'
 
+const multiChipScenarios: Array<{ name: string; value: Array<Segment> }> = [
+  {
+    name: 'Adjacent chips',
+    value: [
+      { type: 'text', value: 'review ' },
+      {
+        type: 'mention',
+        item: {
+          id: '2',
+          searchValue: 'serializer.ts',
+          label: 'serializer.ts',
+          tooltip: 'src/serializer.ts',
+        },
+      },
+      {
+        type: 'mention',
+        item: {
+          id: '3',
+          searchValue: 'cursor-utils.ts',
+          label: 'cursor-utils.ts',
+          tooltip: 'src/cursor-utils.ts',
+        },
+      },
+      {
+        type: 'mention',
+        item: {
+          id: '4',
+          searchValue: 'smart-textbox.tsx',
+          label: 'smart-textbox.tsx',
+          tooltip: 'src/smart-textbox.tsx',
+        },
+      },
+      { type: 'text', value: ' today' },
+    ],
+  },
+  {
+    name: 'Mixed chips + text',
+    value: [
+      { type: 'text', value: 'fix ' },
+      {
+        type: 'mention',
+        item: {
+          id: '5',
+          searchValue: 'smart-textbox.test.tsx',
+          label: 'smart-textbox.test.tsx',
+          tooltip: 'tests/smart-textbox.test.tsx',
+        },
+      },
+      { type: 'text', value: ' then check ' },
+      {
+        type: 'mention',
+        item: {
+          id: '6',
+          searchValue: 'cursor-utils.test.ts',
+          label: 'cursor-utils.test.ts',
+          tooltip: 'tests/cursor-utils.test.ts',
+        },
+      },
+      { type: 'text', value: ' and ' },
+      {
+        type: 'mention',
+        item: {
+          id: '7',
+          searchValue: 'serializer.test.ts',
+          label: 'serializer.test.ts',
+          tooltip: 'tests/serializer.test.ts',
+        },
+      },
+    ],
+  },
+  {
+    name: 'Multiline chips',
+    value: [
+      { type: 'text', value: 'line 1 ' },
+      {
+        type: 'mention',
+        item: {
+          id: '8',
+          searchValue: 'README.md',
+          label: 'README.md',
+          tooltip: 'README.md',
+        },
+      },
+      { type: 'text', value: '\nline 2 ' },
+      {
+        type: 'mention',
+        item: {
+          id: '9',
+          searchValue: 'BUILDING.md',
+          label: 'BUILDING.md',
+          tooltip: 'BUILDING.md',
+        },
+      },
+      {
+        type: 'mention',
+        item: {
+          id: '10',
+          searchValue: 'index.ts',
+          label: 'index.ts',
+          tooltip: 'src/index.ts',
+        },
+      },
+      { type: 'text', value: '\nline 3 done' },
+    ],
+  },
+]
+
+function cloneSegments(segments: Array<Segment>): Array<Segment> {
+  return segments.map((segment) =>
+    segment.type === 'text'
+      ? { ...segment }
+      : { type: 'mention', item: { ...segment.item } }
+  )
+}
+
 function revealWhitespace(value: string): string {
   return value
     .replace(/ /g, '<space>')
@@ -51,6 +166,9 @@ export function App() {
     },
     { type: 'text', value: ' and make it work' },
   ])
+  const [multiChipValue, setMultiChipValue] = useState<Array<Segment>>(() =>
+    cloneSegments(multiChipScenarios[0].value)
+  )
   const [lastSubmit, setLastSubmit] = useState<string>('')
 
   return (
@@ -82,6 +200,47 @@ export function App() {
             setLastSubmit(JSON.stringify(segments, null, 2))
           }
           placeholder="Type here... (Cmd+Enter to submit)"
+          multiline
+          style={{ border: '1px solid #ccc', borderRadius: 6, padding: 8 }}
+          styles={{ input: { padding: 4, minHeight: 80 } }}
+        />
+      </section>
+
+      <section style={{ marginBottom: 32 }}>
+        <h2>Multi-chip rendering playground</h2>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
+          {multiChipScenarios.map((scenario) => (
+            <button
+              key={scenario.name}
+              type="button"
+              onClick={() => setMultiChipValue(cloneSegments(scenario.value))}
+              style={{
+                border: '1px solid #bbb',
+                borderRadius: 6,
+                padding: '4px 10px',
+                background: '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              {scenario.name}
+            </button>
+          ))}
+        </div>
+
+        <SmartTextbox
+          value={multiChipValue}
+          onChange={setMultiChipValue}
+          onSubmit={(segments) =>
+            setLastSubmit(JSON.stringify(segments, null, 2))
+          }
+          placeholder="Try adjacent chips, hover delete, and backspace behavior..."
           multiline
           style={{ border: '1px solid #ccc', borderRadius: 6, padding: 8 }}
           styles={{ input: { padding: 4, minHeight: 80 } }}
@@ -136,6 +295,21 @@ export function App() {
           }}
         >
           {formatSegmentsForDebug(multiValue)}
+        </pre>
+        <p>
+          <strong>Multi-chip text lengths:</strong>{' '}
+          {formatTextSegmentLengths(multiChipValue)}
+        </p>
+        <pre
+          style={{
+            background: '#f5f5f5',
+            padding: 12,
+            borderRadius: 6,
+            fontSize: 13,
+            overflow: 'auto',
+          }}
+        >
+          {formatSegmentsForDebug(multiChipValue)}
         </pre>
       </section>
     </div>
