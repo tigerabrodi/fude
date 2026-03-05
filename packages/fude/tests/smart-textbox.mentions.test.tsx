@@ -422,4 +422,39 @@ describe('@ mention dropdown', () => {
 
     expect(document.body.querySelector('[role="listbox"]')).toBeNull()
   })
+
+  it('applies dropdown class/style API surface while open', async () => {
+    const onFetchMentions = vi
+      .fn<MentionFetcher>()
+      .mockResolvedValue([createItem('1', 'alpha.ts')])
+
+    render(
+      <MentionTestHarness
+        onFetchMentions={onFetchMentions}
+        classNames={{
+          dropdown: 'mention-dropdown',
+          dropdownItem: 'mention-item',
+        }}
+        styles={{
+          dropdown: { borderColor: 'rgb(10, 20, 30)' },
+          dropdownItem: { opacity: 0.6 },
+        }}
+      />
+    )
+
+    const editor = document.querySelector('[role="textbox"]')!
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    const listbox = document.body.querySelector(
+      '.mention-dropdown'
+    ) as HTMLElement
+    expect(listbox).not.toBeNull()
+    expect(listbox.style.borderColor).toBe('rgb(10, 20, 30)')
+
+    const option = document.body.querySelector('.mention-item') as HTMLElement
+    expect(option).not.toBeNull()
+    expect(option.style.opacity).toBe('0.6')
+  })
 })

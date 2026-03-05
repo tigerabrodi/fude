@@ -68,6 +68,105 @@ describe('chip rendering', () => {
     const deleteButton = chip.querySelector('[role="button"]')
     expect(deleteButton).not.toBeNull()
   })
+
+  it('forwards chip styling/class API and updates on prop rerender', async () => {
+    const item = {
+      ...createItem('1', 'file.ts'),
+      tooltip: 'src/file.ts',
+    }
+    const value: Array<Segment> = [{ type: 'mention', item }]
+
+    const { container, rerender } = render(
+      <SmartTextbox
+        value={value}
+        onChange={() => {}}
+        classNames={{
+          tag: 'chip-tag-a',
+          tagIcon: 'chip-icon-a',
+          tagDeleteIcon: 'chip-delete-a',
+          tooltip: 'chip-tooltip-a',
+        }}
+        styles={{
+          tag: { backgroundColor: 'rgb(1, 2, 3)' },
+          tooltip: { opacity: 0.7 },
+        }}
+      />
+    )
+
+    await act(() => Promise.resolve())
+
+    const chip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const tagWrapper = chip.querySelector('.chip-tag-a') as HTMLElement
+    expect(tagWrapper).not.toBeNull()
+
+    const inner = tagWrapper.querySelector('span') as HTMLElement
+    expect(inner.style.backgroundColor).toBe('rgb(1, 2, 3)')
+
+    const iconSlotBeforeHover = chip.querySelector('.chip-icon-a')
+    expect(iconSlotBeforeHover).not.toBeNull()
+
+    fireEvent.mouseEnter(tagWrapper)
+    const deleteSlot = chip.querySelector('.chip-delete-a')
+    expect(deleteSlot).not.toBeNull()
+    const tooltip = chip.querySelector('.chip-tooltip-a') as HTMLElement
+    expect(tooltip).not.toBeNull()
+    expect(tooltip.style.opacity).toBe('0.7')
+
+    rerender(
+      <SmartTextbox
+        value={value}
+        onChange={() => {}}
+        classNames={{
+          tag: 'chip-tag-b',
+          tagIcon: 'chip-icon-b',
+          tagDeleteIcon: 'chip-delete-b',
+          tooltip: 'chip-tooltip-b',
+        }}
+        styles={{
+          tag: { backgroundColor: 'rgb(9, 8, 7)' },
+          tooltip: { opacity: 0.5 },
+        }}
+      />
+    )
+
+    await act(() => Promise.resolve())
+
+    const updatedChip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const updatedTagWrapper = updatedChip.querySelector(
+      '.chip-tag-b'
+    ) as HTMLElement
+    expect(updatedTagWrapper).not.toBeNull()
+    expect(updatedChip.querySelector('.chip-tag-a')).toBeNull()
+    const updatedInner = updatedTagWrapper.querySelector('span') as HTMLElement
+    expect(updatedInner.style.backgroundColor).toBe('rgb(9, 8, 7)')
+  })
+
+  it('passes default tag icons from SmartTextbox to chip roots', async () => {
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [{ type: 'mention', item }]
+
+    const { container } = render(
+      <SmartTextbox
+        value={value}
+        onChange={() => {}}
+        defaultTagIcon={<span data-testid="default-chip-icon">D</span>}
+        defaultTagDeleteIcon={<span data-testid="default-chip-delete">X</span>}
+      />
+    )
+
+    await act(() => Promise.resolve())
+
+    const chip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
+    expect(
+      chip.querySelector('[data-testid="default-chip-icon"]')
+    ).not.toBeNull()
+
+    const tagWrapper = chip.firstElementChild as HTMLElement
+    fireEvent.mouseEnter(tagWrapper)
+    expect(
+      chip.querySelector('[data-testid="default-chip-delete"]')
+    ).not.toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------

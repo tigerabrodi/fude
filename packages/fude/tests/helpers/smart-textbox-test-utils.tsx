@@ -69,10 +69,18 @@ export function MentionTestHarness({
   onFetchMentions,
   onChangeSpy,
   multiline = true,
+  classNames,
+  styles,
+  defaultTagIcon,
+  defaultTagDeleteIcon,
 }: {
   onFetchMentions?: SmartTextboxProps['onFetchMentions']
   onChangeSpy?: (segments: Array<Segment>) => void
   multiline?: boolean
+  classNames?: SmartTextboxProps['classNames']
+  styles?: SmartTextboxProps['styles']
+  defaultTagIcon?: SmartTextboxProps['defaultTagIcon']
+  defaultTagDeleteIcon?: SmartTextboxProps['defaultTagDeleteIcon']
 }) {
   const [value, setValue] = useState<Array<Segment>>([])
   return (
@@ -84,6 +92,10 @@ export function MentionTestHarness({
       }}
       onFetchMentions={onFetchMentions}
       multiline={multiline}
+      classNames={classNames}
+      styles={styles}
+      defaultTagIcon={defaultTagIcon}
+      defaultTagDeleteIcon={defaultTagDeleteIcon}
     />
   )
 }
