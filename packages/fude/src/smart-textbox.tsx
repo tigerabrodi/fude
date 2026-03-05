@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useRef } from 'react'
 import { ChipContent } from './chip-content'
 import { ChipRootManager } from './chip-root-manager'
 import {
@@ -19,32 +18,20 @@ import {
   serialize,
   stripChipSentinels,
 } from './serializer'
+import { useSmartTextboxGhost } from './smart-textbox-ghost'
+import { useSmartTextboxMentions } from './smart-textbox-mentions'
+import {
+  GhostTextOverlay,
+  MentionDropdownPortal,
+} from './smart-textbox-overlays'
 import {
   collapseBoundaryDoubleSpace,
-  containsWhitespace,
-  getCharacterBeforeCaret,
   isEmpty,
   isRemovablePostChipArtifact,
-  nodeHasVisibleContent,
   startsWithWhitespace,
-  toFiniteNumber,
-  toMentionRect,
-  toPlainTextForGhostInternal,
   trimTrailingNewlines,
-  type MentionRect,
 } from './smart-textbox-utils'
-import type { MentionItem, Segment, SmartTextboxProps } from './types'
-
-type MentionPoint = {
-  node: Node
-  offset: number
-}
-
-type GhostAnchor = {
-  top: number
-  left: number
-  height: number
-}
+import type { MentionItem, SmartTextboxProps } from './types'
 
 const DEFAULT_AUTOCOMPLETE_DELAY = 300
 const DEFAULT_TRAILING_LENGTH = 300
@@ -71,67 +58,22 @@ export function SmartTextbox({
   const storeRef = useRef(new MentionStore())
   const chipManagerRef = useRef(new ChipRootManager())
   const highlightedChipRef = useRef<HTMLSpanElement | null>(null)
-  const [isMentionOpen, setIsMentionOpen] = useState(false)
-  const mentionIsOpenRef = useRef(false)
-  const [mentionQuery, setMentionQuery] = useState('')
-  const mentionQueryRef = useRef('')
-  const [mentionItems, setMentionItems] = useState<Array<MentionItem>>([])
-  const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
-  const [mentionAnchorRect, setMentionAnchorRect] =
-    useState<MentionRect | null>(null)
-  const [mentionDropdownPosition, setMentionDropdownPosition] = useState({
-    top: 0,
-    left: 0,
-  })
-  const mentionRequestIdRef = useRef(0)
-  const mentionLastFetchQueryRef = useRef<string | null>(null)
-  const mentionRangeRef = useRef<Range | null>(null)
-  const mentionStartRef = useRef<MentionPoint | null>(null)
-  const mentionDropdownRef = useRef<HTMLDivElement | null>(null)
-  const [ghostSuggestions, setGhostSuggestions] = useState<Array<string>>([])
-  const [ghostActiveIndex, setGhostActiveIndex] = useState(0)
-  const [ghostAnchor, setGhostAnchor] = useState<GhostAnchor | null>(null)
-  const [ghostTypography, setGhostTypography] = useState<CSSProperties>({})
-  const isComposingRef = useRef(false)
   const focusFromPointerRef = useRef(false)
   const deferredHeightSyncIdRef = useRef<number | null>(null)
-  const ghostDebounceIdRef = useRef<number | null>(null)
-  const ghostRequestIdRef = useRef(0)
+  const isComposingRef = useRef(false)
   const pendingChipManagerUnmountsRef = useRef<
     Array<{ manager: ChipRootManager; timeoutId: number }>
   >([])
+  const clearGhostStateRef = useRef<(invalidateRequest?: boolean) => void>(
+    () => {
+      // placeholder until ghost controller is initialized
+    }
+  )
 
   function setCaretVisible(visible: boolean): void {
     const editor = editorRef.current
     if (!editor) return
     editor.style.caretColor = visible ? '' : 'transparent'
-  }
-
-  function setMentionOpen(open: boolean): void {
-    mentionIsOpenRef.current = open
-    setIsMentionOpen(open)
-  }
-
-  function setMentionQueryValue(query: string): void {
-    mentionQueryRef.current = query
-    setMentionQuery(query)
-  }
-
-  function clearGhostDebounceTimer(): void {
-    if (ghostDebounceIdRef.current !== null) {
-      window.clearTimeout(ghostDebounceIdRef.current)
-      ghostDebounceIdRef.current = null
-    }
-  }
-
-  function clearGhostState(invalidateRequest = false): void {
-    clearGhostDebounceTimer()
-    if (invalidateRequest) {
-      ghostRequestIdRef.current += 1
-    }
-    setGhostSuggestions((previous) => (previous.length === 0 ? previous : []))
-    setGhostActiveIndex((previous) => (previous === 0 ? previous : 0))
-    setGhostAnchor((previous) => (previous === null ? previous : null))
   }
 
   function scheduleChipManagerUnmount(manager: ChipRootManager): void {
@@ -155,269 +97,6 @@ export function SmartTextbox({
       window.clearTimeout(entry.timeoutId)
       entry.manager.unmountAll()
     }
-  }
-
-  function getCollapsedSelectionRange(editor: HTMLElement): Range | null {
-    const selection = document.getSelection()
-    if (!selection || selection.rangeCount === 0) return null
-    const range = selection.getRangeAt(0)
-    if (!range.collapsed) return null
-    if (!editor.contains(range.startContainer)) return null
-    return range
-  }
-
-  function isCaretAtVisualEnd(editor: HTMLElement, range: Range): boolean {
-    if (!range.collapsed) return false
-    if (!editor.contains(range.startContainer)) return false
-
-    const trailingRange = range.cloneRange()
-    try {
-      trailingRange.setEnd(editor, editor.childNodes.length)
-    } catch {
-      return false
-    }
-
-    const trailingFragment = trailingRange.cloneContents()
-    for (const child of trailingFragment.childNodes) {
-      if (nodeHasVisibleContent(child)) return false
-    }
-    return true
-  }
-
-  function updateGhostAnchorFromSelection(): boolean {
-    const editor = editorRef.current
-    const wrapper = wrapperRef.current
-    if (!editor || !wrapper) {
-      setGhostAnchor(null)
-      return false
-    }
-
-    const selectionRange = getCollapsedSelectionRange(editor)
-    if (!selectionRange) {
-      setGhostAnchor(null)
-      return false
-    }
-
-    let rect = selectionRange.getBoundingClientRect()
-    if (rect.width <= 0 && rect.height <= 0) {
-      const marker = document.createElement('span')
-      marker.textContent = CHIP_SENTINEL
-      marker.style.display = 'inline'
-      marker.style.padding = '0'
-      marker.style.margin = '0'
-      marker.style.lineHeight = 'inherit'
-      marker.style.verticalAlign = 'top'
-      marker.style.opacity = '0'
-      marker.style.pointerEvents = 'none'
-
-      const markerRange = selectionRange.cloneRange()
-      try {
-        markerRange.insertNode(marker)
-        rect = marker.getBoundingClientRect()
-
-        const selection = document.getSelection()
-        if (selection) {
-          const restoreRange = document.createRange()
-          restoreRange.setStartAfter(marker)
-          restoreRange.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(restoreRange)
-        }
-      } finally {
-        marker.remove()
-      }
-    }
-
-    const editorComputed = window.getComputedStyle(editor)
-    const parsedLineHeight = Number.parseFloat(editorComputed.lineHeight)
-    const fallbackLineHeight = Number.isFinite(parsedLineHeight)
-      ? parsedLineHeight
-      : 0
-    const rectHeight = toFiniteNumber(rect.height)
-    const height = Math.max(toFiniteNumber(rect.height), fallbackLineHeight)
-    const wrapperRect = wrapper.getBoundingClientRect()
-    let top = toFiniteNumber(rect.top) - toFiniteNumber(wrapperRect.top)
-    if (
-      fallbackLineHeight > 0 &&
-      rectHeight > 0 &&
-      rectHeight < fallbackLineHeight
-    ) {
-      // Some engines return glyph box height instead of line box height for
-      // collapsed ranges. Shift up so ghost text shares the same baseline.
-      top -= (fallbackLineHeight - rectHeight) / 2
-    }
-    const nextAnchor: GhostAnchor = {
-      top,
-      left: toFiniteNumber(rect.left) - toFiniteNumber(wrapperRect.left),
-      height,
-    }
-
-    setGhostAnchor((previous) => {
-      if (
-        previous &&
-        Math.abs(previous.top - nextAnchor.top) < 0.5 &&
-        Math.abs(previous.left - nextAnchor.left) < 0.5 &&
-        Math.abs(previous.height - nextAnchor.height) < 0.5
-      ) {
-        return previous
-      }
-      return nextAnchor
-    })
-
-    return true
-  }
-
-  function syncGhostTypographyFromEditor(): void {
-    const editor = editorRef.current
-    if (!editor) return
-
-    const computed = window.getComputedStyle(editor)
-    const nextTypography: CSSProperties = {
-      fontFamily: computed.fontFamily,
-      fontSize: computed.fontSize,
-      fontWeight: computed.fontWeight,
-      fontStyle: computed.fontStyle,
-      lineHeight: computed.lineHeight,
-      letterSpacing: computed.letterSpacing,
-      textTransform: computed.textTransform,
-      textIndent: computed.textIndent,
-    }
-
-    setGhostTypography((previous) => {
-      if (
-        previous.fontFamily === nextTypography.fontFamily &&
-        previous.fontSize === nextTypography.fontSize &&
-        previous.fontWeight === nextTypography.fontWeight &&
-        previous.fontStyle === nextTypography.fontStyle &&
-        previous.lineHeight === nextTypography.lineHeight &&
-        previous.letterSpacing === nextTypography.letterSpacing &&
-        previous.textTransform === nextTypography.textTransform &&
-        previous.textIndent === nextTypography.textIndent
-      ) {
-        return previous
-      }
-      return nextTypography
-    })
-  }
-
-  function scheduleGhostFetch(segments: Array<Segment>): void {
-    clearGhostDebounceTimer()
-
-    if (!onFetchSuggestions) return
-    if (mentionIsOpenRef.current) return
-    if (isComposingRef.current) return
-
-    const editor = editorRef.current
-    if (!editor) return
-
-    const selectionRange = getCollapsedSelectionRange(editor)
-    if (!selectionRange || !isCaretAtVisualEnd(editor, selectionRange)) return
-
-    const effectiveTrailingLength = Math.max(1, trailingLength)
-    const plainText = toPlainTextForGhostInternal(segments)
-    const trailing = plainText.slice(-effectiveTrailingLength)
-    if (trailing.length === 0) return
-
-    const waitMs = Math.max(0, autocompleteDelay)
-    ghostDebounceIdRef.current = window.setTimeout(() => {
-      ghostDebounceIdRef.current = null
-      const requestId = ++ghostRequestIdRef.current
-
-      void onFetchSuggestions(trailing)
-        .then((rawSuggestions) => {
-          if (requestId !== ghostRequestIdRef.current) return
-          if (mentionIsOpenRef.current || isComposingRef.current) return
-
-          const currentEditor = editorRef.current
-          if (!currentEditor) return
-
-          const currentRange = getCollapsedSelectionRange(currentEditor)
-          if (
-            !currentRange ||
-            !isCaretAtVisualEnd(currentEditor, currentRange)
-          ) {
-            return
-          }
-
-          const normalizedSuggestions = (
-            Array.isArray(rawSuggestions) ? rawSuggestions : []
-          ).filter(
-            (value): value is string =>
-              typeof value === 'string' && value.length > 0
-          )
-
-          if (normalizedSuggestions.length === 0) {
-            setGhostSuggestions([])
-            setGhostActiveIndex(0)
-            setGhostAnchor(null)
-            return
-          }
-
-          const hasAnchor = updateGhostAnchorFromSelection()
-          if (!hasAnchor) {
-            setGhostSuggestions([])
-            setGhostActiveIndex(0)
-            setGhostAnchor(null)
-            return
-          }
-
-          syncGhostTypographyFromEditor()
-          setGhostSuggestions(normalizedSuggestions)
-          setGhostActiveIndex(0)
-        })
-        .catch(() => {
-          if (requestId !== ghostRequestIdRef.current) return
-          setGhostSuggestions([])
-          setGhostActiveIndex(0)
-          setGhostAnchor(null)
-        })
-    }, waitMs)
-  }
-
-  function acceptGhostSuggestion(): void {
-    const editor = editorRef.current
-    if (!editor) return
-    if (mentionIsOpenRef.current) return
-
-    const suggestion = ghostSuggestions[ghostActiveIndex] ?? ''
-    if (suggestion.length === 0) return
-
-    const selectionRange = getCollapsedSelectionRange(editor)
-    if (!selectionRange || !isCaretAtVisualEnd(editor, selectionRange)) return
-
-    editor.focus()
-
-    let wasInserted = false
-    if (typeof document.execCommand === 'function') {
-      try {
-        wasInserted = document.execCommand('insertText', false, suggestion)
-      } catch {
-        wasInserted = false
-      }
-    }
-
-    if (!wasInserted) {
-      const fallbackRange = selectionRange.cloneRange()
-      fallbackRange.deleteContents()
-      const textNode = document.createTextNode(suggestion)
-      fallbackRange.insertNode(textNode)
-
-      const selection = document.getSelection()
-      if (selection) {
-        const newRange = document.createRange()
-        newRange.setStart(textNode, suggestion.length)
-        newRange.collapse(true)
-        selection.removeAllRanges()
-        selection.addRange(newRange)
-      }
-    }
-
-    clearGhostState(true)
-
-    const segments = normalizeSegments(serialize(editor, storeRef.current))
-    onChange(segments)
-    syncHeightAfterLayoutChange()
-    syncSingleLineCaretVisibilityDeferred()
   }
 
   function syncSingleLineCaretVisibility(): void {
@@ -485,179 +164,24 @@ export function SmartTextbox({
     scheduleDeferredHeightSync()
   }
 
-  function closeMentionMode(): void {
-    if (
-      !mentionIsOpenRef.current &&
-      !mentionStartRef.current &&
-      !mentionRangeRef.current
-    ) {
-      return
-    }
-
-    mentionRequestIdRef.current += 1
-    mentionLastFetchQueryRef.current = null
-    mentionRangeRef.current = null
-    mentionStartRef.current = null
-    clearGhostState(true)
-    setMentionAnchorRect(null)
-    setMentionItems([])
-    setMentionActiveIndex(0)
-    setMentionQueryValue('')
-    setMentionOpen(false)
-  }
-
-  async function fetchMentions(query: string): Promise<void> {
-    if (!onFetchMentions || !mentionIsOpenRef.current) return
-    if (mentionLastFetchQueryRef.current === query) return
-
-    mentionLastFetchQueryRef.current = query
-    const requestId = ++mentionRequestIdRef.current
-
-    try {
-      const items = await onFetchMentions(query)
-      if (
-        requestId !== mentionRequestIdRef.current ||
-        !mentionIsOpenRef.current
-      ) {
-        return
-      }
-
-      const normalizedItems = Array.isArray(items) ? items : []
-      setMentionItems(normalizedItems)
-      setMentionActiveIndex((previous) => {
-        if (normalizedItems.length === 0) return 0
-        return Math.min(previous, normalizedItems.length - 1)
-      })
-    } catch {
-      if (
-        requestId !== mentionRequestIdRef.current ||
-        !mentionIsOpenRef.current
-      ) {
-        return
-      }
-
-      setMentionItems([])
-      setMentionActiveIndex(0)
-    }
-  }
-
-  function openMentionFromCurrentCaret(): boolean {
+  function syncHeight(): void {
+    if (!multiline) return
     const editor = editorRef.current
+    if (!editor) return
 
-    if (!editor || !onFetchMentions || mentionIsOpenRef.current) {
-      return false
-    }
-
-    const selection = document.getSelection()
-    if (!selection || selection.rangeCount === 0) {
-      return false
-    }
-
-    const caretRange = selection.getRangeAt(0)
-    if (!caretRange.collapsed) {
-      return false
-    }
-    if (!editor.contains(caretRange.startContainer)) {
-      return false
-    }
-
-    const charBefore = getCharacterBeforeCaret(caretRange)
-    if (!charBefore || charBefore.char !== '@') {
-      return false
-    }
-
-    const mentionRange = document.createRange()
-    try {
-      mentionRange.setStart(charBefore.node, charBefore.offset)
-      mentionRange.setEnd(caretRange.startContainer, caretRange.startOffset)
-    } catch {
-      return false
-    }
-
-    const triggerText = stripChipSentinels(mentionRange.toString())
-    if (triggerText !== '@') {
-      return false
-    }
-
-    mentionStartRef.current = {
-      node: charBefore.node,
-      offset: charBefore.offset,
-    }
-    mentionRangeRef.current = mentionRange
-    mentionLastFetchQueryRef.current = null
-    clearGhostState(true)
-
-    setMentionOpen(true)
-    setMentionQueryValue('')
-    setMentionItems([])
-    setMentionActiveIndex(0)
-    setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
-    void fetchMentions('')
-    return true
+    editor.style.height = 'auto'
+    editor.style.height = editor.scrollHeight + 'px'
   }
 
-  function refreshMentionQueryFromSelection(): void {
-    if (!mentionIsOpenRef.current) return
-
+  function insertMentionItem(item: MentionItem, mentionRange: Range): void {
     const editor = editorRef.current
-    const start = mentionStartRef.current
-    if (!editor || !start) {
-      closeMentionMode()
-      return
-    }
-
-    const selection = document.getSelection()
-    if (!selection || selection.rangeCount === 0) {
-      closeMentionMode()
-      return
-    }
-
-    const caretRange = selection.getRangeAt(0)
-    if (!caretRange.collapsed || !editor.contains(caretRange.startContainer)) {
-      closeMentionMode()
-      return
-    }
-
-    const mentionRange = document.createRange()
-    try {
-      mentionRange.setStart(start.node, start.offset)
-      mentionRange.setEnd(caretRange.startContainer, caretRange.startOffset)
-    } catch {
-      closeMentionMode()
-      return
-    }
-
-    const mentionText = stripChipSentinels(mentionRange.toString())
-    if (!mentionText.startsWith('@')) {
-      closeMentionMode()
-      return
-    }
-
-    const query = mentionText.slice(1)
-    if (containsWhitespace(query)) {
-      closeMentionMode()
-      return
-    }
-
-    mentionRangeRef.current = mentionRange
-    setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
-
-    if (query !== mentionQueryRef.current) {
-      setMentionQueryValue(query)
-      void fetchMentions(query)
-    }
-  }
-
-  function insertMentionItem(item: MentionItem): void {
-    const editor = editorRef.current
-    const mentionRange = mentionRangeRef.current
-    if (!editor || !mentionRange) return
+    if (!editor) return
 
     clearHighlight()
 
     const chip = createChipSpan(item.id)
     storeRef.current.set(item)
-    insertChipAtRange(mentionRange.cloneRange(), chip)
+    insertChipAtRange(mentionRange, chip)
 
     const spacer = chip.nextSibling
     if (spacer && spacer.nodeType === Node.TEXT_NODE) {
@@ -696,54 +220,34 @@ export function SmartTextbox({
     onChange(segments)
     syncHeightAfterLayoutChange()
     syncSingleLineCaretVisibilityDeferred()
-    closeMentionMode()
+    mention.closeMentionMode()
   }
 
-  function syncMentionDropdownPosition(): void {
-    if (!mentionIsOpenRef.current || !mentionAnchorRect) return
+  const mention = useSmartTextboxMentions({
+    editorRef,
+    onFetchMentions,
+    onSelectMention: insertMentionItem,
+    onMentionModeToggle: () => clearGhostStateRef.current(true),
+  })
 
-    const dropdown = mentionDropdownRef.current
-    if (!dropdown) return
-
-    const viewportWidth =
-      window.innerWidth || document.documentElement.clientWidth
-    const viewportHeight =
-      window.innerHeight || document.documentElement.clientHeight
-    const dropdownRect = dropdown.getBoundingClientRect()
-    const dropdownWidth = toFiniteNumber(dropdownRect.width)
-    const dropdownHeight = toFiniteNumber(dropdownRect.height)
-
-    const minMargin = 8
-    const gap = 4
-
-    let left = mentionAnchorRect.left
-    let top = mentionAnchorRect.bottom + gap
-
-    if (left + dropdownWidth > viewportWidth - minMargin) {
-      left = Math.max(minMargin, viewportWidth - dropdownWidth - minMargin)
-    }
-
-    const canFlipAbove =
-      mentionAnchorRect.top - gap - dropdownHeight >= minMargin
-    if (top + dropdownHeight > viewportHeight - minMargin && canFlipAbove) {
-      top = mentionAnchorRect.top - gap - dropdownHeight
-    }
-
-    top = Math.min(top, viewportHeight - dropdownHeight - minMargin)
-    top = Math.max(minMargin, top)
-    left = Math.max(minMargin, left)
-    if (!Number.isFinite(top) || !Number.isFinite(left)) return
-
-    setMentionDropdownPosition((previous) => {
-      if (
-        Math.abs(previous.top - top) < 0.5 &&
-        Math.abs(previous.left - left) < 0.5
-      ) {
-        return previous
-      }
-      return { top, left }
-    })
-  }
+  const ghost = useSmartTextboxGhost({
+    editorRef,
+    wrapperRef,
+    onFetchSuggestions,
+    autocompleteDelay,
+    trailingLength,
+    mentionIsOpenRef: mention.mentionIsOpenRef,
+    isComposingRef,
+    onAcceptSuggestion: () => {
+      const editor = editorRef.current
+      if (!editor) return
+      const segments = normalizeSegments(serialize(editor, storeRef.current))
+      onChange(segments)
+      syncHeightAfterLayoutChange()
+      syncSingleLineCaretVisibilityDeferred()
+    },
+  })
+  clearGhostStateRef.current = ghost.clearGhostState
 
   // ---------------------------------------------------------------------------
   // Chip rendering
@@ -813,8 +317,8 @@ export function SmartTextbox({
     const editor = editorRef.current
     if (!editor) return
 
-    if (mentionIsOpenRef.current) {
-      closeMentionMode()
+    if (mention.mentionIsOpenRef.current) {
+      mention.closeMentionMode()
     }
 
     const chipManager = chipManagerRef.current
@@ -943,10 +447,10 @@ export function SmartTextbox({
     }
 
     // Different — clear and rebuild
-    if (mentionIsOpenRef.current) {
-      closeMentionMode()
+    if (mention.mentionIsOpenRef.current) {
+      mention.closeMentionMode()
     }
-    clearGhostState(true)
+    ghost.clearGhostState(true)
     const oldChipManager = chipManagerRef.current
     chipManagerRef.current = new ChipRootManager()
     scheduleChipManagerUnmount(oldChipManager)
@@ -963,83 +467,6 @@ export function SmartTextbox({
     syncHeightAfterLayoutChange()
   })
 
-  useEffect(() => {
-    if (!isMentionOpen) return
-
-    function syncAnchorFromRange(): void {
-      const mentionRange = mentionRangeRef.current
-      if (!mentionRange) return
-      setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
-    }
-
-    function handlePointerDown(event: PointerEvent): void {
-      const target = event.target
-      if (!target || !(target instanceof Node)) return
-
-      const editor = editorRef.current
-      const dropdown = mentionDropdownRef.current
-      if (editor?.contains(target)) return
-      if (dropdown?.contains(target)) return
-      closeMentionMode()
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown, true)
-    window.addEventListener('resize', syncAnchorFromRange)
-    window.addEventListener('scroll', syncAnchorFromRange, true)
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown, true)
-      window.removeEventListener('resize', syncAnchorFromRange)
-      window.removeEventListener('scroll', syncAnchorFromRange, true)
-    }
-  })
-
-  useEffect(() => {
-    if (!isMentionOpen) return
-    syncMentionDropdownPosition()
-  })
-
-  useEffect(() => {
-    if (!isMentionOpen) return
-    const dropdown = mentionDropdownRef.current
-    if (!dropdown) return
-    const selector = `[data-mention-option-index="${mentionActiveIndex}"]`
-    const activeOption = dropdown.querySelector<HTMLElement>(selector)
-    if (!activeOption) return
-    activeOption.scrollIntoView({ block: 'nearest' })
-  }, [isMentionOpen, mentionActiveIndex, mentionItems.length])
-
-  useEffect(() => {
-    const activeGhostSuggestion = ghostSuggestions[ghostActiveIndex] ?? ''
-    if (
-      isMentionOpen ||
-      !ghostAnchor ||
-      ghostSuggestions.length === 0 ||
-      activeGhostSuggestion.length === 0
-    ) {
-      return
-    }
-
-    function syncGhostLayout(): void {
-      const hasAnchor = updateGhostAnchorFromSelection()
-      if (!hasAnchor) {
-        setGhostSuggestions([])
-        setGhostActiveIndex(0)
-        setGhostAnchor(null)
-        return
-      }
-      syncGhostTypographyFromEditor()
-    }
-
-    window.addEventListener('resize', syncGhostLayout)
-    window.addEventListener('scroll', syncGhostLayout, true)
-
-    return () => {
-      window.removeEventListener('resize', syncGhostLayout)
-      window.removeEventListener('scroll', syncGhostLayout, true)
-    }
-  })
-
   // ---------------------------------------------------------------------------
   // Cleanup on unmount
   // ---------------------------------------------------------------------------
@@ -1049,29 +476,11 @@ export function SmartTextbox({
       if (deferredHeightSyncIdRef.current !== null) {
         window.clearTimeout(deferredHeightSyncIdRef.current)
       }
-      clearGhostDebounceTimer()
       flushPendingChipManagerUnmounts()
-      ghostRequestIdRef.current += 1
-      mentionRequestIdRef.current += 1
-      mentionRangeRef.current = null
-      mentionStartRef.current = null
-      mentionIsOpenRef.current = false
       chipManagerRef.current.unmountAll()
       store.clear()
     }
   }, [])
-
-  // ---------------------------------------------------------------------------
-  // Auto-grow (multiline only)
-  // ---------------------------------------------------------------------------
-  function syncHeight(): void {
-    if (!multiline) return
-    const editor = editorRef.current
-    if (!editor) return
-
-    editor.style.height = 'auto'
-    editor.style.height = editor.scrollHeight + 'px'
-  }
 
   // ---------------------------------------------------------------------------
   // Input handler — serialize DOM on every change
@@ -1082,7 +491,7 @@ export function SmartTextbox({
     const editor = editorRef.current
     if (!editor) return
 
-    clearGhostState(true)
+    ghost.clearGhostState(true)
 
     const segments = normalizeSegments(serialize(editor, storeRef.current))
     onChange(segments)
@@ -1090,101 +499,30 @@ export function SmartTextbox({
     syncSingleLineCaretVisibility()
 
     if (isComposingRef.current) return
-    if (mentionIsOpenRef.current) {
-      refreshMentionQueryFromSelection()
+    if (mention.mentionIsOpenRef.current) {
+      mention.refreshMentionQueryFromSelection()
       return
     }
 
-    if (onFetchMentions && openMentionFromCurrentCaret()) {
+    if (onFetchMentions && mention.openMentionFromCurrentCaret()) {
       return
     }
 
-    scheduleGhostFetch(segments)
+    ghost.scheduleGhostFetch(segments)
   }
 
   // ---------------------------------------------------------------------------
-  // Key down — backspace + submit logic
+  // Key down — mention/ghost/backspace/submit logic
   // ---------------------------------------------------------------------------
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
     if (isComposingRef.current) return
 
-    if (mentionIsOpenRef.current) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setMentionActiveIndex((previous) => {
-          if (mentionItems.length === 0) return 0
-          return (previous + 1) % mentionItems.length
-        })
-        return
-      }
-
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setMentionActiveIndex((previous) => {
-          if (mentionItems.length === 0) return 0
-          return (previous - 1 + mentionItems.length) % mentionItems.length
-        })
-        return
-      }
-
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        const activeItem = mentionItems[mentionActiveIndex] ?? null
-        if (activeItem) {
-          insertMentionItem(activeItem)
-        }
-        return
-      }
-
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        closeMentionMode()
-        return
-      }
-
-      if (
-        e.key === 'ArrowLeft' ||
-        e.key === 'ArrowRight' ||
-        e.key === 'Home' ||
-        e.key === 'End'
-      ) {
-        closeMentionMode()
-        return
-      }
-
-      // Mention mode owns key handling while open.
-      return
-    }
-
-    const hasVisibleGhost =
-      !isMentionOpen &&
-      ghostAnchor !== null &&
-      ghostActiveIndex >= 0 &&
-      ghostActiveIndex < ghostSuggestions.length &&
-      (ghostSuggestions[ghostActiveIndex] ?? '').length > 0
-
-    if (hasVisibleGhost && e.key === 'Tab') {
-      e.preventDefault()
-      if (e.shiftKey) {
-        setGhostActiveIndex((previous) => {
-          if (ghostSuggestions.length === 0) return 0
-          return (previous + 1) % ghostSuggestions.length
-        })
-      } else {
-        acceptGhostSuggestion()
-      }
-      return
-    }
-
-    if (hasVisibleGhost && e.key === 'Escape') {
-      e.preventDefault()
-      clearGhostState(true)
-      return
-    }
+    if (mention.handleMentionKeyDown(e)) return
+    if (ghost.handleGhostKeyDown(e)) return
 
     if (e.key === '@' && onFetchMentions) {
       queueMicrotask(() => {
-        openMentionFromCurrentCaret()
+        mention.openMentionFromCurrentCaret()
       })
     }
 
@@ -1261,7 +599,7 @@ export function SmartTextbox({
   // ---------------------------------------------------------------------------
   function handleClick(): void {
     clearHighlight()
-    clearGhostState(true)
+    ghost.clearGhostState(true)
   }
 
   function handleMouseDown(): void {
@@ -1287,8 +625,8 @@ export function SmartTextbox({
   function handleBlur(): void {
     focusFromPointerRef.current = false
     clearHighlight()
-    clearGhostState(true)
-    closeMentionMode()
+    ghost.clearGhostState(true)
+    mention.closeMentionMode()
   }
 
   function handleCompositionStart(): void {
@@ -1297,9 +635,7 @@ export function SmartTextbox({
 
   function handleCompositionEnd(): void {
     isComposingRef.current = false
-    if (mentionIsOpenRef.current) {
-      refreshMentionQueryFromSelection()
-    }
+    mention.handleCompositionEnd()
   }
 
   // ---------------------------------------------------------------------------
@@ -1309,93 +645,14 @@ export function SmartTextbox({
   const inputClassName = classNames?.input || undefined
 
   const isPlaceholderVisible = isEmpty(value)
-  const activeGhostSuggestion = ghostSuggestions[ghostActiveIndex] ?? ''
+  const activeGhostSuggestion =
+    ghost.ghostSuggestions[ghost.ghostActiveIndex] ?? ''
   const isGhostVisible =
-    !isMentionOpen &&
-    ghostAnchor !== null &&
+    !mention.isMentionOpen &&
+    ghost.ghostAnchor !== null &&
     activeGhostSuggestion.length > 0 &&
-    ghostActiveIndex >= 0 &&
-    ghostActiveIndex < ghostSuggestions.length
-  let mentionDropdownPortal: ReturnType<typeof createPortal> | null = null
-
-  if (isMentionOpen && mentionAnchorRect && typeof document !== 'undefined') {
-    mentionDropdownPortal = createPortal(
-      <div
-        ref={mentionDropdownRef}
-        role="listbox"
-        data-mention-query={mentionQuery}
-        className={classNames?.dropdown}
-        style={{
-          position: 'fixed',
-          top: mentionDropdownPosition.top,
-          left: mentionDropdownPosition.left,
-          minWidth: 220,
-          maxWidth: 320,
-          maxHeight: 220,
-          overflowY: 'auto',
-          border: '1px solid #2E2E2E',
-          borderRadius: 8,
-          backgroundColor: '#1C1C1C',
-          color: '#E5E5E5',
-          padding: 4,
-          zIndex: 1000,
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-          ...styles?.dropdown,
-        }}
-      >
-        {mentionItems.length === 0 && (
-          <div
-            style={{
-              padding: '8px 10px',
-              opacity: 0.7,
-              fontSize: 13,
-            }}
-          >
-            {mentionQuery.length > 0
-              ? `No mentions for "${mentionQuery}"`
-              : 'No mentions'}
-          </div>
-        )}
-
-        {mentionItems.map((item, index) => {
-          const isActive = index === mentionActiveIndex
-          const icon = item.icon ?? defaultTagIcon
-          return (
-            <div
-              key={`${item.id}-${index}`}
-              role="option"
-              aria-selected={isActive}
-              data-mention-option-index={index}
-              className={classNames?.dropdownItem}
-              onMouseEnter={() => setMentionActiveIndex(index)}
-              onMouseDown={(event) => {
-                event.preventDefault()
-                insertMentionItem(item)
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                borderRadius: 6,
-                padding: '8px 10px',
-                cursor: 'pointer',
-                backgroundColor: isActive ? '#2A2A2A' : 'transparent',
-                ...styles?.dropdownItem,
-              }}
-            >
-              {icon && (
-                <span style={{ display: 'inline-flex', flexShrink: 0 }}>
-                  {icon}
-                </span>
-              )}
-              <span>{item.label}</span>
-            </div>
-          )
-        })}
-      </div>,
-      document.body
-    )
-  }
+    ghost.ghostActiveIndex >= 0 &&
+    ghost.ghostActiveIndex < ghost.ghostSuggestions.length
 
   return (
     <>
@@ -1448,30 +705,34 @@ export function SmartTextbox({
               {placeholder}
             </div>
           )}
-          {isGhostVisible && ghostAnchor && (
-            <div
-              aria-hidden
-              className={classNames?.ghostText}
-              style={{
-                position: 'absolute',
-                top: ghostAnchor.top,
-                left: ghostAnchor.left,
-                minHeight: ghostAnchor.height,
-                pointerEvents: 'none',
-                userSelect: 'none',
-                whiteSpace: 'pre',
-                opacity: 0.35,
-                color: '#6E6E6E',
-                ...ghostTypography,
-                ...styles?.ghostText,
-              }}
-            >
-              {activeGhostSuggestion}
-            </div>
-          )}
+          <GhostTextOverlay
+            isVisible={isGhostVisible}
+            text={activeGhostSuggestion}
+            anchor={ghost.ghostAnchor}
+            typography={ghost.ghostTypography}
+            classNames={classNames}
+            styles={styles}
+          />
         </div>
       </div>
-      {mentionDropdownPortal}
+
+      <MentionDropdownPortal
+        isOpen={mention.isMentionOpen}
+        mentionQuery={mention.mentionQuery}
+        mentionItems={mention.mentionItems}
+        mentionActiveIndex={mention.mentionActiveIndex}
+        mentionAnchorRect={mention.mentionAnchorRect}
+        mentionDropdownPosition={mention.mentionDropdownPosition}
+        mentionDropdownRef={mention.mentionDropdownRef}
+        classNames={classNames}
+        styles={styles}
+        defaultTagIcon={defaultTagIcon}
+        onMentionMouseEnter={(index) => mention.setMentionActiveIndex(index)}
+        onMentionMouseDown={(item, event) => {
+          event.preventDefault()
+          mention.selectMentionItem(item)
+        }}
+      />
     </>
   )
 }
