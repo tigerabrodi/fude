@@ -112,6 +112,12 @@ type LogEntry = {
 
 type CodeLanguage = 'ts' | 'tsx'
 
+type DesktopPreviewLogEntry = {
+  timestamp: string
+  type: LogEntry['type']
+  text: string
+}
+
 // --- Constants ---
 
 const LOG_TYPE_COLORS: Record<LogEntry['type'], string> = {
@@ -170,28 +176,33 @@ const PROPS_DATA = [
   },
   {
     name: 'onChange',
-    type: '(Segment[]) => void',
+    type: '(segments: Segment[]) => void',
     desc: 'Called on every change. Required.',
   },
   {
     name: 'onFetchMentions',
-    type: '(string) => Promise',
+    type: '(query: string) => Promise<MentionItem[]>',
     desc: 'Called when @ is typed. Filter locally or hit an API.',
   },
   {
     name: 'onFetchSuggestions',
-    type: '(string) => Promise',
+    type: '(trailing: string) => Promise<string[]>',
     desc: 'Called after typing pause. Return ghost text suggestions.',
   },
   {
     name: 'onSubmit',
-    type: '(Segment[]) => void',
-    desc: 'Called on Enter or Cmd+Enter.',
+    type: '(segments: Segment[]) => void',
+    desc: 'Called when user submits (Enter or Cmd+Enter).',
   },
   {
     name: 'multiline',
     type: 'boolean',
     desc: 'Enter adds newline, Cmd+Enter submits. Default false.',
+  },
+  {
+    name: 'placeholder',
+    type: 'string',
+    desc: 'Placeholder text shown when input is empty.',
   },
   {
     name: 'classNames',
@@ -201,18 +212,24 @@ const PROPS_DATA = [
   {
     name: 'autocompleteDelay',
     type: 'number',
-    desc: 'Ms before fetching suggestions. Default 300.',
+    desc: 'Milliseconds to wait before fetching suggestions. Default 300.',
   },
 ]
 
 const SHORTCUTS_DATA = [
-  { keys: ['@'], desc: 'Open mentions' },
-  { keys: ['Tab'], desc: 'Accept suggestion' },
-  { keys: ['Shift', 'Tab'], desc: 'Cycle suggestions' },
-  { keys: ['Enter'], desc: 'Submit or select item' },
-  { keys: ['Cmd', 'Enter'], desc: 'Submit (multiline)' },
-  { keys: ['Backspace'], desc: 'Highlight / delete tag' },
-  { keys: ['Escape'], desc: 'Close / dismiss' },
+  { keys: ['@'], desc: 'Open mention dropdown' },
+  { keys: ['Tab'], desc: 'Accept autocomplete suggestion' },
+  { keys: ['Shift', 'Tab'], desc: 'Cycle through suggestions' },
+  {
+    keys: ['Enter'],
+    desc: 'Submit (single-line) or select dropdown item',
+  },
+  { keys: ['Cmd', 'Enter'], desc: 'Submit (multiline mode)' },
+  {
+    keys: ['Backspace'],
+    desc: 'Highlight tag (first press), delete tag (second press)',
+  },
+  { keys: ['Escape'], desc: 'Close dropdown or dismiss ghost text' },
 ]
 
 const TYPE_DEFINITION_CODE = `type TextSegment = {
@@ -267,17 +284,57 @@ const TAILWIND_EXAMPLE_CODE = `<SmartTextbox
     tag: 'bg-zinc-800 border-zinc-600 text-zinc-300',
     tagHighlighted: 'border-white',
     dropdown: 'bg-zinc-900 border-zinc-700',
-    dropdownItem: 'hover:bg-zinc-800',
+    dropdownItem: 'text-zinc-400 hover:bg-zinc-800',
     ghostText: 'text-white/20',
   }}
 />`
 
-const CLASSNAMES_KEYS = `root · input
-tagWrapper · tag
-tagIcon · tagHighlighted
-tagDeleteIcon
-dropdown · dropdownItem
-ghostText · tooltip`
+const CLASSNAMES_KEYS = `type SmartTextboxClassNames = {
+  root?: string
+  input?: string
+  tagWrapper?: string
+  tag?: string
+  tagIcon?: string
+  tagHighlighted?: string
+  tagDeleteIcon?: string
+  dropdown?: string
+  dropdownItem?: string
+  ghostText?: string
+  tooltip?: string
+}`
+
+const DESKTOP_LOG_PREVIEW: Array<DesktopPreviewLogEntry> = [
+  {
+    timestamp: '01:29:21',
+    type: 'submit',
+    text: '{"agentPrompt":"lets fix <file name=\\"use-image-drag.ts\\" /> and make sure <file name=\\"serializer.ts\\" /> its working"}',
+  },
+  {
+    timestamp: '01:29:18',
+    type: 'change',
+    text: '{"segmentCount":5,"mentions":2,"plainText":"lets fix use-image-drag.ts and make sure serializer.ts its working"}',
+  },
+  {
+    timestamp: '01:29:14',
+    type: 'suggestions',
+    text: '{"trailing":"... make sure serializer.ts its ","results":["and make it work","with tests","today"]}',
+  },
+  {
+    timestamp: '01:29:10',
+    type: 'mentions',
+    text: '{"query":"ser","results":["serializer.ts","serializer.test.ts"]}',
+  },
+  {
+    timestamp: '01:29:08',
+    type: 'mentions',
+    text: '{"query":"(empty)","results":["use-image-drag.ts","serializer.ts","cursor-utils.ts"]}',
+  },
+  {
+    timestamp: '01:29:05',
+    type: 'change',
+    text: '{"segmentCount":3,"mentions":1,"plainText":"lets fix use-image-drag.ts and make it work"}',
+  },
+]
 
 async function getHighlighter() {
   if (!highlighterPromise) {
@@ -335,7 +392,7 @@ let logId = 0
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="font-mono text-[10px] uppercase leading-[12px] tracking-[0.1em] text-text-dim">
+    <p className="font-mono text-[10px] uppercase leading-[12px] tracking-[0.1em] text-text-dim md:text-[11px] md:leading-[14px]">
       {children}
     </p>
   )
@@ -343,7 +400,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="font-sans text-[28px] font-black leading-[1.15] tracking-[-0.03em] text-text">
+    <h2 className="font-sans text-[28px] font-black leading-[1.15] tracking-[-0.03em] text-text md:text-[49px] md:leading-[49px] md:tracking-[-0.04em]">
       {children}
     </h2>
   )
@@ -351,7 +408,9 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 
 function SectionDesc({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[14px] leading-[24px] text-text-muted">{children}</p>
+    <p className="text-[14px] leading-[24px] text-text-muted md:max-w-[560px] md:text-[15px] md:leading-[26px]">
+      {children}
+    </p>
   )
 }
 
@@ -411,10 +470,60 @@ function CodeBlock({
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="flex items-center rounded border border-[#2A2A2A] bg-[#1A1A1A] px-2 py-[3px] font-mono text-[11px] leading-[14px] text-[#888888]">
+    <kbd className="flex items-center rounded border border-[#2A2A2A] bg-[#1A1A1A] px-2 py-[3px] font-mono text-[11px] leading-[14px] text-[#888888] md:px-[10px] md:py-[4px] md:text-[12px] md:leading-[16px]">
       {children}
     </kbd>
   )
+}
+
+function DemoTag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex whitespace-nowrap items-center gap-[7px] rounded-[8px] border border-border-chip bg-elevated px-[12px] py-[4px] font-mono text-[13px] leading-[18px] text-text-body">
+      <span className="text-text-muted">=</span>
+      <span>{children}</span>
+    </span>
+  )
+}
+
+function DemoCaret() {
+  return (
+    <span
+      aria-hidden
+      className="ml-[3px] inline-block h-[20px] w-[2px] rounded-full bg-text align-[-3px]"
+    />
+  )
+}
+
+function DesktopDemoCard({
+  label,
+  children,
+  footer,
+  minHeightClass = 'min-h-[48px]',
+}: {
+  label: string
+  children: React.ReactNode
+  footer?: React.ReactNode
+  minHeightClass?: string
+}) {
+  return (
+    <div className="flex flex-col gap-[10px]">
+      <SectionLabel>{label}</SectionLabel>
+      <div
+        className={`rounded-[12px] border border-border bg-surface p-[14px_16px] ${minHeightClass}`}
+      >
+        {children}
+      </div>
+      {footer ? (
+        <div className="font-mono text-[11px] leading-[14px] text-text-dim">
+          {footer}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function formatLogData(data: unknown): string {
+  return typeof data === 'string' ? data : JSON.stringify(data)
 }
 
 export function App() {
@@ -422,6 +531,14 @@ export function App() {
   const [singleValue, setSingleValue] = useState<Array<Segment>>([])
   const [logs, setLogs] = useState<Array<LogEntry>>([])
   const [copyFeedback, setCopyFeedback] = useState('')
+  const desktopLogEntries =
+    logs.length > 0
+      ? logs.map((log) => ({
+          timestamp: log.timestamp,
+          type: log.type,
+          text: formatLogData(log.data),
+        }))
+      : DESKTOP_LOG_PREVIEW
 
   function addLog(type: LogEntry['type'], data: unknown) {
     setLogs((prev) =>
@@ -532,28 +649,28 @@ export function App() {
       <div className="h-px w-full bg-border-subtle" />
 
       {/* ===== WHAT IT DOES ===== */}
-      <section className="flex flex-col gap-10 px-6 pt-16 md:px-[120px] md:pt-[100px]">
-        <div className="flex flex-col gap-[10px]">
+      <section className="flex flex-col gap-10 px-6 pt-16 md:gap-14 md:px-[120px] md:pt-[100px]">
+        <div className="flex flex-col gap-[10px] md:max-w-[700px]">
           <SectionLabel>What it does</SectionLabel>
           <SectionHeading>
             Two features in one input. They work together.
           </SectionHeading>
         </div>
         <div className="flex flex-col gap-8 md:flex-row md:gap-12">
-          <div className="flex flex-col gap-[10px]">
+          <div className="flex flex-col gap-[10px] md:w-[576px]">
             <h3 className="font-mono text-[12px] font-medium leading-4 tracking-[0.02em] text-text">
               @ Mentions
             </h3>
-            <p className="text-[14px] leading-6 text-text-muted">
+            <p className="text-[14px] leading-6 text-text-muted md:text-[15px] md:leading-[26px]">
               Type @ anywhere to open a dropdown. Pick an item. It turns into an
               inline tag chip that lives inside the text.
             </p>
           </div>
-          <div className="flex flex-col gap-[10px]">
+          <div className="flex flex-col gap-[10px] md:w-[576px]">
             <h3 className="font-mono text-[12px] font-medium leading-4 tracking-[0.02em] text-text">
               AI Autocomplete
             </h3>
-            <p className="text-[14px] leading-6 text-text-muted">
+            <p className="text-[14px] leading-6 text-text-muted md:text-[15px] md:leading-[26px]">
               After you stop typing, ghost text appears showing a predicted
               continuation. Press Tab to accept. Shift+Tab to cycle.
             </p>
@@ -562,12 +679,12 @@ export function App() {
       </section>
 
       {/* ===== INTERACTIVE DEMO ===== */}
-      <section className="flex flex-col gap-8 px-6 pt-20 md:px-[120px]">
+      <section className="flex flex-col gap-8 px-6 pt-20 md:gap-11 md:px-[120px] md:pt-[110px]">
         <div className="flex flex-col gap-[10px]">
           <SectionLabel>Try it</SectionLabel>
           <SectionHeading>See it in action</SectionHeading>
         </div>
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 md:hidden">
           <div>
             <SmartTextbox
               value={value}
@@ -632,19 +749,96 @@ export function App() {
             </span>
           </div>
         </div>
+        <div className="hidden md:grid md:grid-cols-2 md:gap-x-8">
+          <div className="flex flex-col gap-8">
+            <DesktopDemoCard label="Empty">
+              <p className="text-[15px] leading-6 text-text-dim">
+                Type @ to mention, or just start typing...
+              </p>
+            </DesktopDemoCard>
+            <DesktopDemoCard label="Typing">
+              <p className="text-[15px] leading-6 text-text">
+                lets fix the drag handling in
+                <DemoCaret />
+              </p>
+            </DesktopDemoCard>
+            <DesktopDemoCard
+              label="Autocomplete"
+              minHeightClass="min-h-[72px]"
+              footer={
+                <span className="inline-flex items-center gap-2">
+                  press <Kbd>Tab</Kbd> to accept
+                </span>
+              }
+            >
+              <div className="text-[15px] leading-6 text-text">
+                <div>lets fix the</div>
+                <div>
+                  drag han
+                  <DemoCaret />
+                  <span className="ml-2 text-[rgba(250,250,250,0.22)]">
+                    dling in the canvas component
+                  </span>
+                </div>
+              </div>
+            </DesktopDemoCard>
+          </div>
+          <div className="flex flex-col gap-8">
+            <DesktopDemoCard label="Tag inserted">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[15px] leading-6 text-text">
+                <span>lets fix</span>
+                <DemoTag>use-image-drag.ts</DemoTag>
+              </div>
+              <div className="mt-1 text-[15px] leading-6 text-text">
+                and make it
+                <DemoCaret />
+              </div>
+            </DesktopDemoCard>
+            <DesktopDemoCard
+              label="Multiple tags"
+              minHeightClass="min-h-[74px]"
+            >
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[15px] leading-6 text-text">
+                <span>refactor</span>
+                <DemoTag>canvas-renderer.ts</DemoTag>
+                <span>and</span>
+                <DemoTag>viewport.ts</DemoTag>
+                <span>to use</span>
+                <DemoTag>drag-handler.ts</DemoTag>
+                <DemoCaret />
+              </div>
+            </DesktopDemoCard>
+            <DesktopDemoCard
+              label="Tags + autocomplete"
+              minHeightClass="min-h-[72px]"
+            >
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[15px] leading-6 text-text">
+                <span>fix the bug in</span>
+                <DemoTag>viewport.ts</DemoTag>
+              </div>
+              <div className="mt-1 text-[15px] leading-6 text-text">
+                where the zo
+                <DemoCaret />
+              </div>
+              <div className="text-[15px] leading-6 text-[rgba(250,250,250,0.22)]">
+                om level resets on scroll
+              </div>
+            </DesktopDemoCard>
+          </div>
+        </div>
       </section>
 
       {/* ===== EVENT LOG ===== */}
-      <section className="flex flex-col gap-8 px-6 pt-20 md:px-[120px]">
+      <section className="flex flex-col gap-8 px-6 pt-20 md:gap-11 md:px-[120px] md:pt-[112px]">
         <div className="flex flex-col gap-[10px]">
           <SectionLabel>Under the hood</SectionLabel>
           <SectionHeading>Event log</SectionHeading>
           <SectionDesc>
             Every mention fetch, suggestion request, state change, and
-            submission is tracked in real time.
+            submission is tracked. You see the full data flow in real time.
           </SectionDesc>
         </div>
-        <div>
+        <div className="md:hidden">
           {logs.length > 0 && (
             <div className="mb-3 flex justify-end gap-3">
               <button
@@ -706,27 +900,51 @@ export function App() {
             )}
           </div>
         </div>
+        <div className="hidden md:block md:w-[900px]">
+          <div className="rounded-[10px] border border-border-subtle bg-[#0E0E0E] p-[20px_21px]">
+            {desktopLogEntries.map((log, index) => (
+              <div key={`${log.timestamp}-${log.type}-${index}`}>
+                <div className="grid grid-cols-[70px_90px_minmax(0,1fr)] gap-x-3 py-[11px]">
+                  <span className="font-mono text-[12px] leading-4 text-text-faint">
+                    {log.timestamp}
+                  </span>
+                  <span
+                    className={`font-mono text-[12px] leading-4 ${LOG_TYPE_COLORS[log.type]}`}
+                  >
+                    {log.type}
+                  </span>
+                  <span className="font-mono text-[12px] leading-5 text-text-muted break-all">
+                    {log.text}
+                  </span>
+                </div>
+                {index < desktopLogEntries.length - 1 ? (
+                  <div className="h-px bg-border-subtle/60" />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* ===== SEGMENTS ===== */}
-      <section className="flex flex-col gap-8 px-6 pt-20 md:px-[120px]">
+      <section className="flex flex-col gap-8 px-6 pt-20 md:gap-12 md:px-[120px] md:pt-[118px]">
         <div className="flex flex-col gap-[10px]">
           <SectionLabel>Core concept</SectionLabel>
           <SectionHeading>The value is segments</SectionHeading>
           <SectionDesc>
-            Not a string. An array of segments — each is either text or a
-            mention.
+            The value is not a plain string. It&apos;s an array of segments —
+            text or mentions. That makes editing and prompt generation reliable.
           </SectionDesc>
         </div>
         <div className="flex flex-col gap-6 md:flex-row md:gap-8">
-          <div className="flex-1">
+          <div className="flex-1 md:max-w-[584px]">
             <CodeBlock
               label="Type definition"
               code={TYPE_DEFINITION_CODE}
               language="ts"
             />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 md:max-w-[584px]">
             <CodeBlock
               label="Example value"
               code={EXAMPLE_VALUE_CODE}
@@ -737,7 +955,7 @@ export function App() {
       </section>
 
       {/* ===== QUICK START ===== */}
-      <section className="flex flex-col gap-8 px-6 pt-20 md:px-[120px]">
+      <section className="flex flex-col gap-8 px-6 pt-20 md:gap-11 md:px-[120px] md:pt-[120px]">
         <div className="flex flex-col gap-[10px]">
           <SectionLabel>Quick start</SectionLabel>
           <SectionHeading>Up and running in minutes</SectionHeading>
@@ -752,12 +970,12 @@ export function App() {
       </section>
 
       {/* ===== PROPS ===== */}
-      <section className="flex flex-col gap-8 px-6 pt-20 md:px-[120px]">
+      <section className="flex flex-col gap-8 px-6 pt-20 md:gap-11 md:px-[120px] md:pt-[120px]">
         <div className="flex flex-col gap-[10px]">
           <SectionLabel>API Reference</SectionLabel>
           <SectionHeading>Props</SectionHeading>
         </div>
-        <div className="flex flex-col">
+        <div className="flex flex-col md:hidden">
           {PROPS_DATA.map((prop) => (
             <div
               key={prop.name}
@@ -777,15 +995,38 @@ export function App() {
             </div>
           ))}
         </div>
+        <div className="hidden md:flex md:w-[900px] md:flex-col">
+          <div className="grid grid-cols-[180px_260px_minmax(0,1fr)] border-b border-border-subtle pb-[13px] font-mono text-[11px] leading-4 text-text-dim">
+            <span>Prop</span>
+            <span>Type</span>
+            <span>Description</span>
+          </div>
+          {PROPS_DATA.map((prop) => (
+            <div
+              key={prop.name}
+              className="grid grid-cols-[180px_260px_minmax(0,1fr)] gap-x-0 border-b border-border-subtle py-[14px]"
+            >
+              <span className="font-mono text-[14px] leading-[22px] text-text">
+                {prop.name}
+              </span>
+              <span className="font-mono text-[13px] leading-[22px] text-text-dim">
+                {prop.type}
+              </span>
+              <span className="text-[14px] leading-[22px] text-text-muted">
+                {prop.desc}
+              </span>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ===== KEYBOARD SHORTCUTS ===== */}
-      <section className="flex flex-col gap-8 px-6 pt-20 md:px-[120px]">
+      <section className="flex flex-col gap-8 px-6 pt-20 md:gap-11 md:px-[120px] md:pt-[122px]">
         <div className="flex flex-col gap-[10px]">
           <SectionLabel>Keyboard-first</SectionLabel>
           <SectionHeading>Shortcuts</SectionHeading>
         </div>
-        <div className="flex flex-col">
+        <div className="flex flex-col md:hidden">
           {SHORTCUTS_DATA.map((shortcut, i) => (
             <div
               key={shortcut.desc}
@@ -809,44 +1050,78 @@ export function App() {
             </div>
           ))}
         </div>
+        <div className="hidden md:flex md:w-[700px] md:flex-col">
+          {SHORTCUTS_DATA.map((shortcut, index) => (
+            <div
+              key={shortcut.desc}
+              className={`grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-6 py-[16px] ${
+                index < SHORTCUTS_DATA.length - 1
+                  ? 'border-b border-border-subtle'
+                  : ''
+              }`}
+            >
+              <div className="flex min-h-[26px] items-center gap-2">
+                {shortcut.keys.map((key, keyIndex) => (
+                  <span key={key} className="flex items-center gap-2">
+                    {keyIndex > 0 ? (
+                      <span className="font-mono text-[11px] leading-[16px] text-text-dim">
+                        +
+                      </span>
+                    ) : null}
+                    <Kbd>{key}</Kbd>
+                  </span>
+                ))}
+              </div>
+              <span className="text-[14px] leading-[18px] text-text-muted">
+                {shortcut.desc}
+              </span>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ===== STYLING ===== */}
-      <section className="flex flex-col gap-8 px-6 pt-20 md:px-[120px]">
+      <section className="flex flex-col gap-8 px-6 pt-20 md:gap-12 md:px-[120px] md:pt-[118px]">
         <div className="flex flex-col gap-[10px]">
           <SectionLabel>Customization</SectionLabel>
           <SectionHeading>Style every element</SectionHeading>
           <SectionDesc>
             Use classNames to target individual parts. Tailwind, CSS modules, or
-            plain classes.
+            plain classes. styles prop works too for inline overrides.
           </SectionDesc>
         </div>
         <div className="flex flex-col gap-6 md:flex-row md:gap-8">
-          <div className="flex-1">
+          <div className="flex-1 md:order-2 md:max-w-[584px]">
             <CodeBlock
               label="Tailwind example"
               code={TAILWIND_EXAMPLE_CODE}
               language="tsx"
             />
           </div>
-          <div className="flex-1">
-            <CodeBlock label="classNames keys" code={CLASSNAMES_KEYS} />
+          <div className="flex-1 md:order-1 md:max-w-[584px]">
+            <CodeBlock
+              label="classNames keys"
+              code={CLASSNAMES_KEYS}
+              language="ts"
+            />
           </div>
         </div>
       </section>
 
       {/* ===== DIVIDER ===== */}
-      <div className="mx-6 mt-20 h-px bg-border-subtle md:mx-[120px]" />
+      <div className="mt-20 h-px w-full bg-border-subtle md:mt-[100px]" />
 
       {/* ===== FOOTER ===== */}
-      <footer className="flex flex-col items-center gap-4 px-6 pt-8 pb-12">
+      <footer className="flex flex-col items-center gap-4 px-6 pt-8 pb-12 md:flex-row md:justify-between md:px-[120px] md:pt-[40px] md:pb-[50px]">
         <div className="flex items-baseline gap-2">
-          <span className="font-sans text-[16px] font-black leading-5 tracking-[-0.02em] text-text-faint">
+          <span className="font-sans text-[16px] font-black leading-5 tracking-[-0.02em] text-text-faint md:text-[18px] md:leading-[22px]">
             fude
           </span>
-          <span className="text-[14px] leading-[18px] text-[#222222]">筆</span>
+          <span className="text-[14px] leading-[18px] text-[#222222] md:text-[16px] md:leading-5">
+            筆
+          </span>
         </div>
-        <div className="flex gap-6">
+        <div className="flex gap-6 md:gap-8">
           <a
             href="https://github.com/tigerabrodi/fude"
             target="_blank"
@@ -863,8 +1138,11 @@ export function App() {
           >
             npm
           </a>
-          <span className="font-mono text-[11px] leading-[14px] text-text-faint">
+          <span className="font-mono text-[11px] leading-[14px] text-text-faint md:hidden">
             MIT
+          </span>
+          <span className="hidden font-mono text-[11px] leading-[14px] text-text-faint md:inline">
+            MIT License
           </span>
         </div>
       </footer>
