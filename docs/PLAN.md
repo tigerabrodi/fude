@@ -102,7 +102,7 @@ Single file initially. The page has these sections in order:
 - "fude" — font-sans, 64px mobile / 120px desktop, font-black, negative tracking, text-text
 - "筆" — serif, 48px mobile / 88px desktop, text-faint
 - Tagline — font-sans, 17px mobile / 22px desktop, text-muted, max-w-xl
-- Install badge: `$ npm install fude` in a surface bg pill with border
+- Install badge: `$ npm install @tigerabrodioss/fude` in a surface bg pill with border
 - GitHub link: `https://github.com/tigerabrodi/fude` — surface bg pill with border
 - Mobile: buttons stack vertically. Desktop: `md:flex-row`
 
@@ -194,7 +194,7 @@ But don't over-abstract. A few repeated Tailwind classes are fine.
 ### Step 4: Build verification
 
 ```bash
-bun run --filter fude build        # build the fude package first
+bun run --filter @tigerabrodioss/fude build        # build the fude package first
 bun run --filter fude-docs build   # build the docs site
 bun run --filter fude-docs preview # preview the built site
 ```
@@ -209,7 +209,7 @@ The fude package lives at `packages/fude/`. To publish:
 
 Check that it has:
 
-- `"name": "fude"`
+- `"name": "@tigerabrodioss/fude"`
 - `"version": "0.1.0"` (or whatever version)
 - `"main"` / `"module"` / `"types"` / `"exports"` fields pointing to built output
 - `"files"` array specifying what to include in the npm package
@@ -221,7 +221,7 @@ Check that it has:
 ### 2. Build the package
 
 ```bash
-bun run --filter fude build
+bun run --filter @tigerabrodioss/fude build
 ```
 
 ### 3. Verify the package contents
@@ -254,7 +254,7 @@ npm info fude
 
 ### 7. Update docs npm link
 
-Replace the placeholder npm link in the docs footer with `https://www.npmjs.com/package/fude`.
+Replace the placeholder npm link in the docs footer with `https://www.npmjs.com/package/@tigerabrodioss/fude`.
 
 ---
 
@@ -274,7 +274,7 @@ Replace the placeholder npm link in the docs footer with `https://www.npmjs.com/
 ## External Links
 
 - GitHub: https://github.com/tigerabrodi/fude
-- npm: https://www.npmjs.com/package/fude (after publishing)
+- npm: https://www.npmjs.com/package/@tigerabrodioss/fude (after publishing)
 
 ## Notes
 

@@ -1,4 +1,4 @@
-import type { Segment } from 'fude'
+import type { Segment } from '@tigerabrodioss/fude'
 import { useState } from 'react'
 import { mentionCatalog, multiChipScenarios } from './app-data'
 import {

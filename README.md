@@ -21,7 +21,7 @@ Both work at the same time. You can have tags in the middle of your text and gho
 ## Install
 
 ```bash
-npm install fude
+npm install @tigerabrodioss/fude
 ```
 
 ---
@@ -74,7 +74,7 @@ const [segments, setSegments] = useState<Segment[]>([])
 When you need plain text for something like sending to an API, use the helper:
 
 ```ts
-import { getPlainText } from 'fude'
+import { getPlainText } from '@tigerabrodioss/fude'
 
 getPlainText(segments) // "lets fix use-image-drag.ts and make it work"
 ```
@@ -84,8 +84,8 @@ getPlainText(segments) // "lets fix use-image-drag.ts and make it work"
 ## Basic usage
 
 ```tsx
-import { SmartTextbox, fuzzyFilter, getPlainText } from 'fude'
-import type { Segment, MentionItem } from 'fude'
+import { SmartTextbox, fuzzyFilter, getPlainText } from '@tigerabrodioss/fude'
+import type { Segment, MentionItem } from '@tigerabrodioss/fude'
 import { useState } from 'react'
 
 const files: MentionItem[] = [
@@ -285,7 +285,7 @@ When `classNames.tagWrapper` is provided, built-in wrapper metric inline styles 
 ## Helpers
 
 ```ts
-import { getPlainText, fuzzyFilter } from 'fude'
+import { getPlainText, fuzzyFilter } from '@tigerabrodioss/fude'
 ```
 
 ### getPlainText
@@ -314,7 +314,7 @@ You do not have to use this. Pass any filter logic you want.
 ### Local static list with fuzzy filter
 
 ```tsx
-import { SmartTextbox, fuzzyFilter, getPlainText } from 'fude'
+import { SmartTextbox, fuzzyFilter, getPlainText } from '@tigerabrodioss/fude'
 ;<SmartTextbox
   value={segments}
   onChange={setSegments}
@@ -450,5 +450,5 @@ import type {
   SmartTextboxProps,
   SmartTextboxClassNames,
   SmartTextboxStyles,
-} from 'fude'
+} from '@tigerabrodioss/fude'
 ```

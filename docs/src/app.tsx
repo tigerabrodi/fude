@@ -1,5 +1,5 @@
-import type { MentionItem, Segment } from 'fude'
-import { getPlainText, SmartTextbox } from 'fude'
+import type { MentionItem, Segment } from '@tigerabrodioss/fude'
+import { getPlainText, SmartTextbox } from '@tigerabrodioss/fude'
 import { useEffect, useState } from 'react'
 
 // --- Data helpers (from examples/basic/src/app-data.ts) ---
@@ -258,8 +258,8 @@ const EXAMPLE_VALUE_CODE = `[
 ]`
 
 const QUICK_START_CODE = `import { useState } from 'react'
-import { SmartTextbox, fuzzyFilter, getPlainText } from 'fude'
-import type { MentionItem, Segment } from 'fude'
+import { SmartTextbox, fuzzyFilter, getPlainText } from '@tigerabrodioss/fude'
+import type { MentionItem, Segment } from '@tigerabrodioss/fude'
 
 const files: MentionItem[] = [
   { id: '1', searchValue: 'use-image-drag.ts', label: 'use-image-drag.ts' },
@@ -601,6 +601,74 @@ export function App() {
     })
   }
 
+  const livePlayground = (
+    <div className="flex flex-col gap-6">
+      <div>
+        <SmartTextbox
+          value={value}
+          onChange={handleChange}
+          onFetchMentions={handleFetchMentions}
+          onFetchSuggestions={handleFetchSuggestions}
+          onSubmit={handleSubmit}
+          placeholder="Type @ to mention, or just start typing..."
+          multiline
+          className="rounded-lg border border-[#262626] bg-[#141414]"
+          classNames={TEXTBOX_CLASS_NAMES}
+        />
+      </div>
+      <div>
+        <SmartTextbox
+          value={singleValue}
+          onChange={(segments) => {
+            setSingleValue(segments)
+            addLog('change', {
+              input: 'single-line',
+              segmentCount: segments.length,
+              mentions: segments.filter((s) => s.type === 'mention').length,
+              plainText: getPlainText(segments),
+            })
+          }}
+          onFetchMentions={handleFetchMentions}
+          onFetchSuggestions={handleFetchSuggestions}
+          onSubmit={handleSubmit}
+          placeholder="Enter submits. Try @mentions here too..."
+          className="rounded-lg border border-[#262626] bg-[#141414]"
+          classNames={SINGLE_LINE_CLASS_NAMES}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[10px] leading-[12px] text-text-dim">
+        <span className="flex items-center gap-1.5">
+          press
+          <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-[7px] py-[2px] font-mono text-[9px] leading-[12px] text-[#888888]">
+            Tab
+          </kbd>
+          to accept
+        </span>
+        <span className="flex items-center gap-1.5">
+          press
+          <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-[7px] py-[2px] font-mono text-[9px] leading-[12px] text-[#888888]">
+            Shift+Tab
+          </kbd>
+          to cycle
+        </span>
+        <span className="flex items-center gap-1.5">
+          press
+          <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-[7px] py-[2px] font-mono text-[9px] leading-[12px] text-[#888888]">
+            @
+          </kbd>
+          to mention
+        </span>
+        <span className="flex items-center gap-1.5">
+          press
+          <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-[7px] py-[2px] font-mono text-[9px] leading-[12px] text-[#888888]">
+            Cmd+Enter
+          </kbd>
+          to submit
+        </span>
+      </div>
+    </div>
+  )
+
   return (
     <div className="mx-auto min-h-screen w-full max-w-[390px] bg-bg md:max-w-none">
       {/* ===== HERO ===== */}
@@ -622,7 +690,7 @@ export function App() {
         </p>
         <div className="mt-8 flex flex-col gap-[10px] md:flex-row md:gap-4">
           <a
-            href="https://www.npmjs.com/package/fude"
+            href="https://www.npmjs.com/package/@tigerabrodioss/fude"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-3"
@@ -631,7 +699,7 @@ export function App() {
               $
             </span>
             <span className="font-mono text-[13px] leading-4 text-text-body">
-              npm install fude
+              npm install @tigerabrodioss/fude
             </span>
           </a>
           <a
@@ -684,71 +752,7 @@ export function App() {
           <SectionLabel>Try it</SectionLabel>
           <SectionHeading>See it in action</SectionHeading>
         </div>
-        <div className="flex flex-col gap-6 md:hidden">
-          <div>
-            <SmartTextbox
-              value={value}
-              onChange={handleChange}
-              onFetchMentions={handleFetchMentions}
-              onFetchSuggestions={handleFetchSuggestions}
-              onSubmit={handleSubmit}
-              placeholder="Type @ to mention, or just start typing..."
-              multiline
-              className="rounded-lg border border-[#262626] bg-[#141414]"
-              classNames={TEXTBOX_CLASS_NAMES}
-            />
-          </div>
-          <div>
-            <SmartTextbox
-              value={singleValue}
-              onChange={(segments) => {
-                setSingleValue(segments)
-                addLog('change', {
-                  input: 'single-line',
-                  segmentCount: segments.length,
-                  mentions: segments.filter((s) => s.type === 'mention').length,
-                  plainText: getPlainText(segments),
-                })
-              }}
-              onFetchMentions={handleFetchMentions}
-              onFetchSuggestions={handleFetchSuggestions}
-              onSubmit={handleSubmit}
-              placeholder="Enter submits. Try @mentions here too..."
-              className="rounded-lg border border-[#262626] bg-[#141414]"
-              classNames={SINGLE_LINE_CLASS_NAMES}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[10px] leading-[12px] text-text-dim">
-            <span className="flex items-center gap-1.5">
-              press
-              <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-[7px] py-[2px] font-mono text-[9px] leading-[12px] text-[#888888]">
-                Tab
-              </kbd>
-              to accept
-            </span>
-            <span className="flex items-center gap-1.5">
-              press
-              <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-[7px] py-[2px] font-mono text-[9px] leading-[12px] text-[#888888]">
-                Shift+Tab
-              </kbd>
-              to cycle
-            </span>
-            <span className="flex items-center gap-1.5">
-              press
-              <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-[7px] py-[2px] font-mono text-[9px] leading-[12px] text-[#888888]">
-                @
-              </kbd>
-              to mention
-            </span>
-            <span className="flex items-center gap-1.5">
-              press
-              <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-[7px] py-[2px] font-mono text-[9px] leading-[12px] text-[#888888]">
-                Cmd+Enter
-              </kbd>
-              to submit
-            </span>
-          </div>
-        </div>
+        <div className="md:hidden">{livePlayground}</div>
         <div className="hidden md:grid md:grid-cols-2 md:gap-x-8">
           <div className="flex flex-col gap-8">
             <DesktopDemoCard label="Empty">
@@ -776,7 +780,7 @@ export function App() {
                 <div>
                   drag han
                   <DemoCaret />
-                  <span className="ml-2 text-[rgba(250,250,250,0.22)]">
+                  <span className="text-[rgba(250,250,250,0.22)]">
                     dling in the canvas component
                   </span>
                 </div>
@@ -819,12 +823,22 @@ export function App() {
               <div className="mt-1 text-[15px] leading-6 text-text">
                 where the zo
                 <DemoCaret />
-              </div>
-              <div className="text-[15px] leading-6 text-[rgba(250,250,250,0.22)]">
-                om level resets on scroll
+                <span className="text-[rgba(250,250,250,0.22)]">
+                  om level resets on scroll
+                </span>
               </div>
             </DesktopDemoCard>
           </div>
+        </div>
+        <div className="hidden md:flex md:flex-col md:gap-5 md:pt-4">
+          <div className="flex flex-col gap-[10px]">
+            <SectionLabel>Live input</SectionLabel>
+            <p className="max-w-[560px] text-[15px] leading-[26px] text-text-muted">
+              Try the real component here. The event log below updates as you
+              type.
+            </p>
+          </div>
+          <div className="max-w-[720px]">{livePlayground}</div>
         </div>
       </section>
 
@@ -867,7 +881,7 @@ export function App() {
               </button>
             </div>
           )}
-          <div className="max-h-[320px] overflow-y-auto rounded-[10px] border border-border-subtle bg-[#0E0E0E] p-[14px] font-mono">
+          <div className="max-h-[400px] overflow-y-auto rounded-[10px] border border-border-subtle bg-[#0E0E0E] p-[14px] font-mono">
             {logs.length === 0 ? (
               <p className="text-[10px] leading-[17px] text-text-faint">
                 Start typing above to see events...
@@ -901,7 +915,7 @@ export function App() {
           </div>
         </div>
         <div className="hidden md:block md:w-[900px]">
-          <div className="rounded-[10px] border border-border-subtle bg-[#0E0E0E] p-[20px_21px]">
+          <div className="max-h-[400px] overflow-y-auto rounded-[10px] border border-border-subtle bg-[#0E0E0E] p-[20px_21px]">
             {desktopLogEntries.map((log, index) => (
               <div key={`${log.timestamp}-${log.type}-${index}`}>
                 <div className="grid grid-cols-[70px_90px_minmax(0,1fr)] gap-x-3 py-[11px]">
@@ -1131,7 +1145,7 @@ export function App() {
             GitHub
           </a>
           <a
-            href="https://www.npmjs.com/package/fude"
+            href="https://www.npmjs.com/package/@tigerabrodioss/fude"
             target="_blank"
             rel="noopener noreferrer"
             className="font-mono text-[11px] leading-[14px] text-text-faint hover:text-text-muted"

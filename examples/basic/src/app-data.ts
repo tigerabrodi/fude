@@ -1,4 +1,8 @@
-import type { MentionItem, Segment, SmartTextboxClassNames } from 'fude'
+import type {
+  MentionItem,
+  Segment,
+  SmartTextboxClassNames,
+} from '@tigerabrodioss/fude'
 
 export const mentionCatalog: Array<MentionItem> = [
   {

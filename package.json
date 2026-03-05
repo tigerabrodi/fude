@@ -8,7 +8,7 @@
     "docs"
   ],
   "scripts": {
-    "build": "bun run --filter fude build",
+    "build": "bun run --filter @tigerabrodioss/fude build",
     "format": "prettier --write .",
     "lint": "eslint ."
   },
@@ -16,7 +16,7 @@
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
     "eslint-plugin-react-hooks": "^5.0.0",
-    "fude": "workspace:*",
+    "@tigerabrodioss/fude": "workspace:*",
     "globals": "^16.0.0",
     "happy-dom": "^20.8.3",
     "prettier": "^3.4.0",

@@ -1,5 +1,5 @@
-import type { Segment } from 'fude'
-import { SmartTextbox } from 'fude'
+import type { Segment } from '@tigerabrodioss/fude'
+import { SmartTextbox } from '@tigerabrodioss/fude'
 import { fetchMentions, fetchSuggestions, tailwindThemes } from './app-data'
 
 type TailwindStylesTabProps = {

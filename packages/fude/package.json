@@ -1,7 +1,8 @@
 {
-  "name": "fude",
+  "name": "@tigerabrodioss/fude",
   "version": "0.0.0",
   "description": "Rich text input with @ mentions and AI autocomplete",
+  "author": "Tiger Abrodi",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -21,6 +22,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run",

@@ -1,4 +1,4 @@
-import type { Segment } from 'fude'
+import type { Segment } from '@tigerabrodioss/fude'
 import { tailwindThemes } from './app-data'
 
 export function cloneSegments(segments: Array<Segment>): Array<Segment> {

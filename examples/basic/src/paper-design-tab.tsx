@@ -1,5 +1,5 @@
-import type { MentionItem, Segment } from 'fude'
-import { getPlainText, SmartTextbox } from 'fude'
+import type { MentionItem, Segment } from '@tigerabrodioss/fude'
+import { getPlainText, SmartTextbox } from '@tigerabrodioss/fude'
 import { useState } from 'react'
 import { fetchMentions, fetchSuggestions } from './app-data'
 
