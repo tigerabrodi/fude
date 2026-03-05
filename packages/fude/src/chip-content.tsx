@@ -62,7 +62,7 @@ export type ChipContentProps = {
 const chipStyles: CSSProperties = {
   display: 'inline-block',
   position: 'relative',
-  verticalAlign: 'baseline',
+  verticalAlign: 'text-bottom',
   lineHeight: 1,
 }
 
@@ -75,14 +75,14 @@ const chipInnerStyles: CSSProperties = {
   borderStyle: 'solid',
   borderColor: '#2E2E2E',
   borderRadius: 6,
-  padding: '1px 8px',
+  padding: '0 8px',
   color: '#ccc',
   fontSize: '0.92em',
   fontFamily:
     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
   cursor: 'default',
-  verticalAlign: 'baseline',
-  lineHeight: 1.2,
+  verticalAlign: 'text-bottom',
+  lineHeight: 1.1,
   whiteSpace: 'nowrap',
 }
 

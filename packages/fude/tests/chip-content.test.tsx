@@ -52,9 +52,9 @@ describe('ChipContent', () => {
     const inner = wrapper.querySelector('span') as HTMLElement
 
     expect(wrapper.style.display).toBe('inline-block')
-    expect(wrapper.style.verticalAlign).toBe('baseline')
+    expect(wrapper.style.verticalAlign).toBe('text-bottom')
     expect(inner.style.whiteSpace).toBe('nowrap')
-    expect(inner.style.verticalAlign).toBe('baseline')
+    expect(inner.style.verticalAlign).toBe('text-bottom')
   })
 
   it('renders custom icon from item', () => {
