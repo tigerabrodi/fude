@@ -17,9 +17,14 @@ describe('normalizeSegments', () => {
     expect(normalizeSegments(segments)).toEqual([])
   })
 
-  it('collapses whitespace-only text segment to []', () => {
-    const segments: Array<Segment> = [{ type: 'text', value: '  \n\n  ' }]
+  it('collapses newline-only text segment to []', () => {
+    const segments: Array<Segment> = [{ type: 'text', value: '\n\n' }]
     expect(normalizeSegments(segments)).toEqual([])
+  })
+
+  it('preserves space-only text segment', () => {
+    const segments: Array<Segment> = [{ type: 'text', value: '   ' }]
+    expect(normalizeSegments(segments)).toEqual(segments)
   })
 
   it('preserves real text content', () => {

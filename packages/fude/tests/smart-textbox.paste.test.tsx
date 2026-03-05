@@ -209,7 +209,10 @@ describe('paste handling', () => {
 
     const editor = container.querySelector('[role="textbox"]')!
     replaceEditorText(editor, '')
-    dispatchPlainTextPaste(editor, 'hello <b>rich?</b> world\nline 2 with @mention\n\n')
+    dispatchPlainTextPaste(
+      editor,
+      'hello <b>rich?</b> world\nline 2 with @mention\n\n'
+    )
     await flushAsyncUpdates()
 
     expect(getLastSegments(onChange)).toEqual([

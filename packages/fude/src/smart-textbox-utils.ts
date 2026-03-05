@@ -34,7 +34,7 @@ export function isEmpty(value: SmartTextboxProps['value']): boolean {
   if (
     value.length === 1 &&
     value[0].type === 'text' &&
-    value[0].value.trim() === ''
+    (value[0].value === '' || /^(?:\r\n|\r|\n)+$/.test(value[0].value))
   ) {
     return true
   }

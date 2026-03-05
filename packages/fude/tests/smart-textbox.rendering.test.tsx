@@ -102,6 +102,19 @@ describe('placeholder', () => {
     expect(placeholder).not.toBeNull()
   })
 
+  it('hides placeholder when value is space-only text', () => {
+    const { container } = render(
+      <SmartTextbox
+        value={[{ type: 'text', value: ' ' }]}
+        onChange={() => {}}
+        placeholder="Type something..."
+      />
+    )
+
+    const placeholder = container.querySelector('[aria-hidden]')
+    expect(placeholder).toBeNull()
+  })
+
   it('hides placeholder when value has content', () => {
     const { container } = render(
       <SmartTextbox
@@ -310,6 +323,20 @@ describe('onChange', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1)
     expect(onChange).toHaveBeenCalledWith([{ type: 'text', value: 'hello' }])
+  })
+
+  it('preserves a single typed leading space instead of normalizing to []', () => {
+    const onChange = vi.fn()
+    const { container } = render(
+      <SmartTextbox value={[]} onChange={onChange} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    editor.appendChild(document.createTextNode(' '))
+    fireEvent.input(editor)
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledWith([{ type: 'text', value: ' ' }])
   })
 })
 
