@@ -1,9 +1,20 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
+import { createPortal } from 'react-dom'
 import type {
   MentionItem,
   SmartTextboxClassNames,
   SmartTextboxStyles,
 } from './types'
+
+type DebugWindow = Window & {
+  __FUDE_DEBUG_FORCE_TOOLTIP_OPEN__?: boolean
+}
 
 // ---------------------------------------------------------------------------
 // Default icons (inline SVGs)
@@ -103,11 +114,7 @@ const iconSlotStyles: CSSProperties = {
 }
 
 const tooltipStyles: CSSProperties = {
-  position: 'absolute',
-  bottom: '100%',
-  left: '50%',
-  transform: 'translateX(-50%)',
-  marginBottom: 6,
+  position: 'fixed',
   padding: '4px 8px',
   backgroundColor: '#1C1C1C',
   border: '1px solid #2E2E2E',
@@ -118,6 +125,11 @@ const tooltipStyles: CSSProperties = {
   whiteSpace: 'nowrap',
   pointerEvents: 'none',
   zIndex: 10,
+}
+
+function isTooltipDebugForcedOpen(): boolean {
+  if (typeof window === 'undefined') return false
+  return (window as DebugWindow).__FUDE_DEBUG_FORCE_TOOLTIP_OPEN__ === true
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +145,52 @@ export function ChipContent({
   highlighted,
   onDelete,
 }: ChipContentProps) {
+  const rootRef = useRef<HTMLSpanElement | null>(null)
   const [isHovered, setHovered] = useState(false)
+  const isTooltipVisible =
+    Boolean(item.tooltip) && (isHovered || isTooltipDebugForcedOpen())
+  const [tooltipPosition, setTooltipPosition] = useState<{
+    top: number
+    left: number
+  } | null>(null)
+
+  function updateTooltipPosition(): void {
+    const root = rootRef.current
+    if (!root) return
+
+    const rect = root.getBoundingClientRect()
+    const margin = 6
+    const minViewportPadding = 8
+    const nextLeft = Math.min(
+      Math.max(rect.left + rect.width / 2, minViewportPadding),
+      window.innerWidth - minViewportPadding
+    )
+    setTooltipPosition({
+      top: rect.top - margin,
+      left: nextLeft,
+    })
+  }
+
+  useEffect(() => {
+    if (!isTooltipVisible || typeof window === 'undefined') {
+      setTooltipPosition(null)
+      return
+    }
+
+    updateTooltipPosition()
+
+    const handleReposition = () => {
+      updateTooltipPosition()
+    }
+
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [isTooltipVisible])
 
   const icon = item.icon ?? defaultTagIcon ?? DEFAULT_FILE_ICON
   const deleteIcon =
@@ -148,6 +205,7 @@ export function ChipContent({
 
   return (
     <span
+      ref={rootRef}
       style={chipStyles}
       className={classNames?.tag}
       onMouseEnter={() => setHovered(true)}
@@ -184,14 +242,24 @@ export function ChipContent({
       </span>
 
       {/* Tooltip */}
-      {item.tooltip && isHovered && (
-        <span
-          style={{ ...tooltipStyles, ...styles?.tooltip }}
-          className={classNames?.tooltip}
-        >
-          {item.tooltip}
-        </span>
-      )}
+      {isTooltipVisible &&
+        tooltipPosition &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <span
+            style={{
+              ...tooltipStyles,
+              top: tooltipPosition.top,
+              left: tooltipPosition.left,
+              transform: 'translate(-50%, -100%)',
+              ...styles?.tooltip,
+            }}
+            className={classNames?.tooltip}
+          >
+            {item.tooltip}
+          </span>,
+          document.body
+        )}
     </span>
   )
 }

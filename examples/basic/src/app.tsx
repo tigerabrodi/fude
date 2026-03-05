@@ -322,6 +322,13 @@ async function copyText(text: string): Promise<void> {
 }
 
 export function App() {
+  // useEffect(() => {
+  //   type DebugWindow = Window & {
+  //     __FUDE_DEBUG_FORCE_TOOLTIP_OPEN__?: boolean
+  //   }
+  //   ;(window as DebugWindow).__FUDE_DEBUG_FORCE_TOOLTIP_OPEN__ = true
+  // }, [])
+
   const [singleValue, setSingleValue] = useState<Array<Segment>>([])
   const [multiValue, setMultiValue] = useState<Array<Segment>>([
     { type: 'text', value: 'lets fix ' },

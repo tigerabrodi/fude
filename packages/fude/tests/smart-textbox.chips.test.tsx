@@ -108,7 +108,7 @@ describe('chip rendering', () => {
     fireEvent.mouseEnter(tagWrapper)
     const deleteSlot = chip.querySelector('.chip-delete-a')
     expect(deleteSlot).not.toBeNull()
-    const tooltip = chip.querySelector('.chip-tooltip-a') as HTMLElement
+    const tooltip = document.querySelector('.chip-tooltip-a') as HTMLElement
     expect(tooltip).not.toBeNull()
     expect(tooltip.style.opacity).toBe('0.7')
 
