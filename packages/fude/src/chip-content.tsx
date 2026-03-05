@@ -111,10 +111,6 @@ const chipInnerHoverStyles: CSSProperties = {
   borderColor: '#3A3A3A',
 }
 
-const highlightedStyles: CSSProperties = {
-  boxShadow: '0 0 0 2px #5B9EFF',
-}
-
 const iconSlotStyles: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -218,7 +214,6 @@ export function ChipContent({
     ...(!hasTagClassOverride ? chipInnerMetricStyles : undefined),
     ...(!hasTagClassOverride ? chipInnerVisualStyles : undefined),
     ...(!hasTagClassOverride && isHovered ? chipInnerHoverStyles : undefined),
-    ...(highlighted ? highlightedStyles : undefined),
     ...styles?.tag,
     ...(highlighted ? styles?.tagHighlighted : undefined),
   } as CSSProperties & { [key: string]: string }

@@ -254,6 +254,7 @@ type SmartTextboxClassNames = {
 
 `tagWrapper` targets the outer chip wrapper (`inline-block` container). `tag` targets the inner visible chip shell.
 `tagHighlighted` targets the inner chip shell while it is highlighted by first Backspace press (before second Backspace deletes the chip).
+No default highlight ring is applied; use `tagHighlighted` / `styles.tagHighlighted` to define pre-delete highlight visuals.
 
 When `classNames.tag` is provided, built-in visual inline chip styles (padding/background/border/colors/fonts) are not forced, so utility classes can style the chip shell directly.
 When `classNames.tagWrapper` is provided, built-in wrapper metric inline styles (`vertical-align`, `line-height`) are not forced, so classes like `align-middle` and `my-0.5` can tune line centering/row spacing.

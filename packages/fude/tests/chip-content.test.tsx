@@ -198,15 +198,14 @@ describe('ChipContent', () => {
   // Highlighted state
   // ---------------------------------------------------------------------------
 
-  it('applies highlight styles when highlighted prop is true', () => {
+  it('does not apply a default highlight ring when highlighted prop is true', () => {
     const item = createItem('1', 'file.ts')
     const { container } = render(
       <ChipContent item={item} highlighted onDelete={() => {}} />
     )
 
-    // The inner chip span (with background) should have boxShadow
     const innerSpan = container.querySelector('span > span') as HTMLElement
-    expect(innerSpan.style.boxShadow).toContain('5B9EFF')
+    expect(innerSpan.style.boxShadow).toBe('')
   })
 
   it('applies highlighted class and style overrides when highlighted', () => {
