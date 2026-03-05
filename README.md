@@ -65,7 +65,7 @@ So if the user typed `lets fix` then inserted a tag for `use-image-drag.ts` then
 ]
 ```
 
-You manage this array in state and pass it as `value`. The component gives you the updated array in `onChange`..
+You manage this array in state and pass it as `value`. The component gives you the updated array in `onChange`.
 
 **You almost never need to construct segments manually.** You start with an empty array and let the user build it up by typing.
 
