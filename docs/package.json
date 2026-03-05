@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "bun run --filter @tigerabrodioss/fude build && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
