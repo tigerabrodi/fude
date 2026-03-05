@@ -209,6 +209,24 @@ describe('ChipContent', () => {
     expect(innerSpan.style.boxShadow).toContain('5B9EFF')
   })
 
+  it('applies highlighted class and style overrides when highlighted', () => {
+    const item = createItem('1', 'file.ts')
+    const { container } = render(
+      <ChipContent
+        item={item}
+        highlighted
+        classNames={{ tag: 'chip-tag', tagHighlighted: 'chip-tag-highlighted' }}
+        styles={{ tagHighlighted: { borderColor: 'rgb(1, 2, 3)' } }}
+        onDelete={() => {}}
+      />
+    )
+
+    const innerSpan = container.querySelector('span > span') as HTMLElement
+    expect(innerSpan.classList.contains('chip-tag')).toBe(true)
+    expect(innerSpan.classList.contains('chip-tag-highlighted')).toBe(true)
+    expect(innerSpan.style.borderColor).toBe('rgb(1, 2, 3)')
+  })
+
   it('does not apply highlight styles when highlighted is false', () => {
     const item = createItem('1', 'file.ts')
     const { container } = render(

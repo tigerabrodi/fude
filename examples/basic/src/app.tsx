@@ -86,6 +86,40 @@ export function App() {
 
   const tabButtonClassName =
     'rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150'
+  const activeTabClassName = 'bg-slate-900 text-white'
+  const inactiveTabClassName = 'text-slate-700 hover:bg-slate-100'
+  const paperTabClassName =
+    activeTab === 'paper' ? activeTabClassName : inactiveTabClassName
+  const tailwindTabClassName =
+    activeTab === 'tailwind' ? activeTabClassName : inactiveTabClassName
+  const playgroundTabClassName =
+    activeTab === 'playground' ? activeTabClassName : inactiveTabClassName
+  const tabContentByKey = {
+    paper: <PaperDesignTab value={paperValue} onChange={setPaperValue} />,
+    tailwind: (
+      <TailwindStylesTab
+        tailwindValues={tailwindValues}
+        onThemeValueChange={setTailwindThemeValue}
+      />
+    ),
+    playground: (
+      <PlaygroundDebugTab
+        singleValue={singleValue}
+        multiValue={multiValue}
+        multiChipValue={multiChipValue}
+        lastSubmit={lastSubmit}
+        copyStatus={copyStatus}
+        onSingleChange={setSingleValue}
+        onMultiChange={setMultiValue}
+        onMultiChipChange={setMultiChipValue}
+        onSubmit={(segments) =>
+          setLastSubmit(JSON.stringify(segments, null, 2))
+        }
+        onScenarioNameChange={setActiveScenarioName}
+        onCopy={handleCopy}
+      />
+    ),
+  } as const
 
   return (
     <div className="min-h-screen bg-slate-100 py-10 text-slate-900">
@@ -103,62 +137,27 @@ export function App() {
           <button
             type="button"
             onClick={() => setActiveTab('paper')}
-            className={`${tabButtonClassName} ${
-              activeTab === 'paper'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
+            className={`${tabButtonClassName} ${paperTabClassName}`}
           >
             Paper Design
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('tailwind')}
-            className={`${tabButtonClassName} ${
-              activeTab === 'tailwind'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
+            className={`${tabButtonClassName} ${tailwindTabClassName}`}
           >
             Tailwind Styles
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('playground')}
-            className={`${tabButtonClassName} ${
-              activeTab === 'playground'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-700 hover:bg-slate-100'
-            }`}
+            className={`${tabButtonClassName} ${playgroundTabClassName}`}
           >
             Playground (Debug)
           </button>
         </div>
 
-        {activeTab === 'paper' ? (
-          <PaperDesignTab value={paperValue} onChange={setPaperValue} />
-        ) : activeTab === 'tailwind' ? (
-          <TailwindStylesTab
-            tailwindValues={tailwindValues}
-            onThemeValueChange={setTailwindThemeValue}
-          />
-        ) : (
-          <PlaygroundDebugTab
-            singleValue={singleValue}
-            multiValue={multiValue}
-            multiChipValue={multiChipValue}
-            lastSubmit={lastSubmit}
-            copyStatus={copyStatus}
-            onSingleChange={setSingleValue}
-            onMultiChange={setMultiValue}
-            onMultiChipChange={setMultiChipValue}
-            onSubmit={(segments) =>
-              setLastSubmit(JSON.stringify(segments, null, 2))
-            }
-            onScenarioNameChange={setActiveScenarioName}
-            onCopy={handleCopy}
-          />
-        )}
+        {tabContentByKey[activeTab]}
       </div>
     </div>
   )

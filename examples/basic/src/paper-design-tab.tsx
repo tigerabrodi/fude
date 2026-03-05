@@ -7,36 +7,17 @@ type PaperDesignTabProps = {
   onChange: (segments: Array<Segment>) => void
 }
 
-const mono = '"Geist Mono", "JetBrains Mono", ui-monospace, monospace'
-const sans = '"Inter", system-ui, sans-serif'
-
 export function PaperDesignTab({ value, onChange }: PaperDesignTabProps) {
   return (
-    <section
-      className="-mx-4 -mt-2 min-h-[80vh] rounded-2xl px-10 py-10 sm:px-20 sm:py-16"
-      style={{ backgroundColor: '#0A0A0A', fontFamily: sans }}
-    >
+    <section className="-mx-4 -mt-2 min-h-[80vh] rounded-2xl bg-[#0A0A0A] px-10 py-10 font-[Inter,system-ui,sans-serif] sm:px-20 sm:py-16">
       <div className="mb-12">
-        <p
-          className="mb-3 text-[11px] font-normal uppercase"
-          style={{
-            color: '#444444',
-            fontFamily: mono,
-            letterSpacing: '0.1em',
-          }}
-        >
+        <p className="mb-3 text-[11px] font-normal uppercase tracking-[0.1em] text-[#444444] font-[Geist_Mono,JetBrains_Mono,ui-monospace,monospace]">
           Component Library
         </p>
-        <h2
-          className="text-5xl font-black"
-          style={{ color: '#FAFAFA', letterSpacing: '-0.02em' }}
-        >
+        <h2 className="text-5xl font-black tracking-[-0.02em] text-[#FAFAFA]">
           Smart Textbox
         </h2>
-        <p
-          className="mt-3 max-w-xl text-lg"
-          style={{ color: '#555555', lineHeight: '28px' }}
-        >
+        <p className="mt-3 max-w-xl text-lg leading-7 text-[#555555]">
           @ mentions with inline tags, autocomplete suggestions, and
           keyboard-first interactions.
         </p>
@@ -51,124 +32,48 @@ export function PaperDesignTab({ value, onChange }: PaperDesignTabProps) {
           onSubmit={() => {}}
           placeholder="Type @ to mention, or just start typing..."
           multiline
-          style={{
-            backgroundColor: '#141414',
-            border: '1px solid #262626',
-            borderRadius: '8px',
-          }}
-          styles={{
-            input: {
-              minHeight: '120px',
-              padding: '14px 16px',
-              fontSize: '15px',
-              lineHeight: '24px',
-              color: '#FAFAFA',
-              fontFamily: sans,
-              caretColor: '#FAFAFA',
-            },
-            tag: {
-              backgroundColor: '#1C1C1C',
-              border: '1px solid #2E2E2E',
-              borderRadius: '5px',
-              padding: '2px 8px',
-              gap: '5px',
-              fontSize: '13px',
-              color: '#AAAAAA',
-              fontFamily: mono,
-            },
-            tagIcon: {
-              color: '#666666',
-            },
-            tagDeleteIcon: {
-              color: '#666666',
-            },
-            ghostText: {
-              color: 'rgba(250, 250, 250, 0.22)',
-              fontFamily: sans,
-            },
-            dropdown: {
-              backgroundColor: '#161616',
-              border: '1px solid #262626',
-              borderRadius: '10px',
-              padding: '4px',
-            },
-            dropdownItem: {
-              borderRadius: '7px',
-              padding: '8px 10px',
-              gap: '10px',
-              fontSize: '13px',
-              color: '#AAAAAA',
-              fontFamily: mono,
-            },
-            tooltip: {
-              backgroundColor: '#1A1A1A',
-              border: '1px solid #2A2A2A',
-              borderRadius: '6px',
-              padding: '6px 10px',
-              fontSize: '12px',
-              color: '#999999',
-              fontFamily: mono,
-            },
+          className="rounded-lg border border-[#262626] bg-[#141414]"
+          classNames={{
+            input:
+              'min-h-[120px] p-[14px_16px] text-[15px] leading-6 text-[#FAFAFA] caret-[#FAFAFA] placeholder:text-[#444444]',
+            tag: 'rounded-[5px] border border-[#2E2E2E] bg-[#1C1C1C] text-[#AAAAAA] px-2 py-0.5 gap-[5px] text-[13px] font-[Geist_Mono,JetBrains_Mono,ui-monospace,monospace]',
+            tagIcon: 'text-[#666666]',
+            tagDeleteIcon: 'text-[#666666]',
+            ghostText: 'text-[rgba(250,250,250,0.22)]',
+            dropdown: '!bg-[#161616] !border-[#262626] !rounded-[10px] !p-1',
+            dropdownItem:
+              '!rounded-[7px] hover:!bg-[#1E1E1E] !text-[#AAAAAA] font-[Geist_Mono,JetBrains_Mono,ui-monospace,monospace] !text-[13px]',
+            tooltip:
+              '!bg-[#1A1A1A] !border-[#2A2A2A] !rounded-[6px] !text-[#999999] !text-xs font-[Geist_Mono,JetBrains_Mono,ui-monospace,monospace]',
           }}
         />
       </div>
 
-      <div
-        className="mt-6 flex flex-wrap items-center gap-4 text-xs"
-        style={{ color: '#444444', fontFamily: mono }}
-      >
+      <div className="mt-6 flex flex-wrap items-center gap-4 text-xs text-[#444444] font-[Geist_Mono,JetBrains_Mono,ui-monospace,monospace]">
         <span className="flex items-center gap-1.5">
           press
-          <kbd
-            className="rounded px-1.5 py-0.5 text-[11px]"
-            style={{
-              backgroundColor: '#1A1A1A',
-              border: '1px solid #2A2A2A',
-              color: '#888888',
-            }}
-          >
+          <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-1.5 py-0.5 text-[11px] text-[#888888]">
             Tab
           </kbd>
           to accept
         </span>
         <span className="flex items-center gap-1.5">
           press
-          <kbd
-            className="rounded px-1.5 py-0.5 text-[11px]"
-            style={{
-              backgroundColor: '#1A1A1A',
-              border: '1px solid #2A2A2A',
-              color: '#888888',
-            }}
-          >
+          <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-1.5 py-0.5 text-[11px] text-[#888888]">
             Shift+Tab
           </kbd>
           to cycle suggestions
         </span>
         <span className="flex items-center gap-1.5">
           press
-          <kbd
-            className="rounded px-1.5 py-0.5 text-[11px]"
-            style={{
-              backgroundColor: '#1A1A1A',
-              border: '1px solid #2A2A2A',
-              color: '#888888',
-            }}
-          >
+          <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-1.5 py-0.5 text-[11px] text-[#888888]">
             @
           </kbd>
           to mention
         </span>
         <span className="flex items-center gap-1.5">
           press
-          <kbd
-            className="rounded px-1.5 py-0.5 text-[11px]"
-            style={{
-              backgroundColor: '#1A1A1A',
-              border: '1px solid #2A2A2A',
-              color: '#888888',
-            }}
-          >
+          <kbd className="rounded border border-[#2A2A2A] bg-[#1A1A1A] px-1.5 py-0.5 text-[11px] text-[#888888]">
             Cmd+Enter
           </kbd>
           to submit

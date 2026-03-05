@@ -43,6 +43,7 @@ export type SmartTextboxClassNames = {
   input?: string
   tagWrapper?: string
   tag?: string
+  tagHighlighted?: string
   tagIcon?: string
   tagDeleteIcon?: string
   dropdown?: string

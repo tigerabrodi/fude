@@ -48,7 +48,7 @@ type Segment = TextSegment | MentionSegment
 
 So if the user typed `lets fix` then inserted a tag for `use-image-drag.ts` then typed `and make it work`, the value would be:
 
-```ts
+```tsx
 ;[
   { type: 'text', value: 'lets fix ' },
   {
@@ -240,6 +240,7 @@ type SmartTextboxClassNames = {
   input?: string
   tagWrapper?: string
   tag?: string
+  tagHighlighted?: string
   tagIcon?: string
   tagDeleteIcon?: string
   dropdown?: string
@@ -252,6 +253,7 @@ type SmartTextboxClassNames = {
 ```
 
 `tagWrapper` targets the outer chip wrapper (`inline-block` container). `tag` targets the inner visible chip shell.
+`tagHighlighted` targets the inner chip shell while it is highlighted by first Backspace press (before second Backspace deletes the chip).
 
 When `classNames.tag` is provided, built-in visual inline chip styles (padding/background/border/colors/fonts) are not forced, so utility classes can style the chip shell directly.
 When `classNames.tagWrapper` is provided, built-in wrapper metric inline styles (`vertical-align`, `line-height`) are not forced, so classes like `align-middle` and `my-0.5` can tune line centering/row spacing.
@@ -406,6 +408,7 @@ const items: MentionItem[] = [
     input: 'bg-zinc-900 border-zinc-700 text-white',
     tagWrapper: 'align-middle my-0.5',
     tag: 'bg-zinc-800 border-zinc-600 text-zinc-300',
+    tagHighlighted: 'ring-2 ring-blue-500',
     dropdown: 'bg-zinc-900 border-zinc-700',
     dropdownItem: 'text-zinc-400 hover:bg-zinc-800',
     ghostText: 'text-white/20',

@@ -207,6 +207,12 @@ export function ChipContent({
 
   const hasTagClassOverride = Boolean(classNames?.tag)
   const hasTagWrapperClassOverride = Boolean(classNames?.tagWrapper)
+  const innerClassName = [
+    classNames?.tag,
+    highlighted ? classNames?.tagHighlighted : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
   const mergedInnerStyles: CSSProperties = {
     ...chipInnerLayoutStyles,
     ...(!hasTagClassOverride ? chipInnerMetricStyles : undefined),
@@ -214,7 +220,8 @@ export function ChipContent({
     ...(!hasTagClassOverride && isHovered ? chipInnerHoverStyles : undefined),
     ...(highlighted ? highlightedStyles : undefined),
     ...styles?.tag,
-  }
+    ...(highlighted ? styles?.tagHighlighted : undefined),
+  } as CSSProperties & { [key: string]: string }
   const mergedWrapperStyles: CSSProperties = {
     ...chipWrapperBaseStyles,
     ...(!hasTagWrapperClassOverride ? chipWrapperMetricStyles : undefined),
@@ -229,7 +236,7 @@ export function ChipContent({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <span style={mergedInnerStyles} className={classNames?.tag}>
+      <span style={mergedInnerStyles} className={innerClassName || undefined}>
         {/* Icon slot — shows delete icon on hover, normal icon otherwise */}
         <span
           style={iconSlotStyles}
