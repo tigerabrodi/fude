@@ -4,6 +4,8 @@ A React component for rich text input with `@` mentions and AI autocomplete. Bui
 
 Inline tag chips. Ghost text suggestions. Keyboard-first. Fully customizable.
 
+![fude-react-ts-meta-thumbnail](https://github.com/user-attachments/assets/f483cf99-11b1-4347-9de7-76e22fdee0a2)
+
 ---
 
 ## What it does
