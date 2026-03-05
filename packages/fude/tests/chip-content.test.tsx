@@ -42,6 +42,21 @@ describe('ChipContent', () => {
     expect(svg).not.toBeNull()
   })
 
+  it('uses stable default inline metrics for mixed text/chip lines', () => {
+    const item = createItem('1', 'file.ts')
+    const { container } = render(
+      <ChipContent item={item} onDelete={() => {}} />
+    )
+
+    const wrapper = container.firstElementChild as HTMLElement
+    const inner = wrapper.querySelector('span') as HTMLElement
+
+    expect(wrapper.style.display).toBe('inline-block')
+    expect(wrapper.style.verticalAlign).toBe('baseline')
+    expect(inner.style.whiteSpace).toBe('nowrap')
+    expect(inner.style.verticalAlign).toBe('baseline')
+  })
+
   it('renders custom icon from item', () => {
     const item = createItem('1', 'file.ts', {
       icon: <span data-testid="custom-icon">*</span>,

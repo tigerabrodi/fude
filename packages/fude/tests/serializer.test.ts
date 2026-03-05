@@ -397,7 +397,8 @@ describe('deserialize', () => {
 
     const chip = fragment.childNodes[0] as HTMLElement
     expect(chip.style.position).toBe('relative')
-    expect(chip.style.display).toBe('inline-flex')
+    expect(chip.style.display).toBe('inline-block')
+    expect(chip.style.verticalAlign).toBe('baseline')
     expect(chip.style.userSelect).toBe('none')
   })
 

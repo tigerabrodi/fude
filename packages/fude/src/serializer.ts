@@ -181,7 +181,9 @@ export function createChipSpan(id: string): HTMLSpanElement {
   span.setAttribute(MENTION_ID_ATTR, id)
   span.contentEditable = 'false'
   span.style.position = 'relative' // tooltip positioning
-  span.style.display = 'inline-flex' // icon + label horizontal layout
+  span.style.display = 'inline-block' // keeps baseline alignment predictable
+  span.style.verticalAlign = 'baseline'
+  span.style.lineHeight = 'inherit'
   span.style.userSelect = 'none' // prevent text selection inside chip
   return span
 }

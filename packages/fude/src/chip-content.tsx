@@ -60,23 +60,30 @@ export type ChipContentProps = {
 // ---------------------------------------------------------------------------
 
 const chipStyles: CSSProperties = {
-  display: 'contents',
+  display: 'inline-block',
+  position: 'relative',
+  verticalAlign: 'baseline',
+  lineHeight: 1,
 }
 
 const chipInnerStyles: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
-  gap: 5,
+  gap: 6,
   backgroundColor: '#1C1C1C',
-  border: '1px solid #2E2E2E',
-  borderRadius: 5,
-  padding: '2px 8px',
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: '#2E2E2E',
+  borderRadius: 6,
+  padding: '1px 8px',
   color: '#ccc',
-  fontSize: 13,
-  fontFamily: 'monospace',
+  fontSize: '0.92em',
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
   cursor: 'default',
-  verticalAlign: 'middle',
-  lineHeight: 1.4,
+  verticalAlign: 'baseline',
+  lineHeight: 1.2,
+  whiteSpace: 'nowrap',
 }
 
 const chipInnerHoverStyles: CSSProperties = {
@@ -92,6 +99,7 @@ const iconSlotStyles: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   flexShrink: 0,
+  lineHeight: 0,
 }
 
 const tooltipStyles: CSSProperties = {

@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MENTION_ID_ATTR } from '../src/serializer'
+import { CHIP_SENTINEL, MENTION_ID_ATTR } from '../src/serializer'
 import { SmartTextbox } from '../src/smart-textbox'
 import type { MentionItem, Segment, SmartTextboxProps } from '../src/types'
 
@@ -38,6 +38,14 @@ function updateTextNodeValue(node: Text, value: string): void {
 async function flushAsyncUpdates(): Promise<void> {
   await act(async () => {
     await Promise.resolve()
+  })
+}
+
+async function flushTimeoutTick(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0)
+    })
   })
 }
 
@@ -273,6 +281,7 @@ describe('styling', () => {
 
     const editor = container.querySelector('[role="textbox"]') as HTMLElement
     expect(editor.style.whiteSpace).toBe('nowrap')
+    expect(editor.style.lineHeight).toBe('1.4')
   })
 
   it('sets white-space: pre-wrap for multiline mode', () => {
@@ -282,6 +291,7 @@ describe('styling', () => {
 
     const editor = container.querySelector('[role="textbox"]') as HTMLElement
     expect(editor.style.whiteSpace).toBe('pre-wrap')
+    expect(editor.style.lineHeight).toBe('1.45')
   })
 
   it('uses horizontal overflow scrolling in single-line mode', () => {
@@ -671,9 +681,10 @@ describe('@ mention dropdown', () => {
       configurable: true,
       value: 100,
     })
+    let mockScrollWidth = 100
     Object.defineProperty(editor, 'scrollWidth', {
       configurable: true,
-      value: 320,
+      get: () => mockScrollWidth,
     })
     editor.scrollLeft = 0
 
@@ -682,7 +693,59 @@ describe('@ mention dropdown', () => {
     await flushAsyncUpdates()
 
     fireEvent.keyDown(editor, { key: 'Enter' })
+    mockScrollWidth = 320
+    await flushTimeoutTick()
     expect(editor.scrollLeft).toBe(320)
+  })
+
+  it('auto-grows multiline height after mention insertion when chip layout expands later', async () => {
+    const item = createItem('1', 'alpha.ts')
+    const onFetchMentions = vi.fn<MentionFetcher>().mockResolvedValue([item])
+
+    const { container } = render(
+      <MentionTestHarness onFetchMentions={onFetchMentions} multiline />
+    )
+
+    const editor = container.querySelector('[role="textbox"]') as HTMLElement
+    let mockScrollHeight = 120
+    Object.defineProperty(editor, 'scrollHeight', {
+      configurable: true,
+      get: () => mockScrollHeight,
+    })
+
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    fireEvent.keyDown(editor, { key: 'Enter' })
+    expect(editor.style.height).toBe('120px')
+
+    mockScrollHeight = 200
+    await flushTimeoutTick()
+    expect(editor.style.height).toBe('200px')
+  })
+
+  it('keeps a structural sentinel after auto-inserted trailing space in single-line mode', async () => {
+    const item = createItem('1', 'alpha.ts')
+    const onFetchMentions = vi.fn<MentionFetcher>().mockResolvedValue([item])
+
+    const { container } = render(
+      <MentionTestHarness onFetchMentions={onFetchMentions} multiline={false} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    replaceEditorText(editor, '@')
+    fireEvent.input(editor)
+    await flushAsyncUpdates()
+
+    fireEvent.keyDown(editor, { key: 'Enter' })
+    await flushAsyncUpdates()
+
+    const chip = editor.querySelector(`[${MENTION_ID_ATTR}]`)
+    expect(chip).not.toBeNull()
+    const spacer = chip?.nextSibling
+    expect(spacer?.nodeType).toBe(Node.TEXT_NODE)
+    expect(spacer?.textContent).toBe(CHIP_SENTINEL + ' ' + CHIP_SENTINEL)
   })
 
   it('closes dropdown on Escape and keeps typed @query text', async () => {

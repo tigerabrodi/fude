@@ -233,6 +233,7 @@ export function SmartTextbox({
   const mentionStartRef = useRef<MentionPoint | null>(null)
   const mentionDropdownRef = useRef<HTMLDivElement | null>(null)
   const isComposingRef = useRef(false)
+  const deferredHeightSyncIdRef = useRef<number | null>(null)
 
   function setCaretVisible(visible: boolean): void {
     const editor = editorRef.current
@@ -276,6 +277,33 @@ export function SmartTextbox({
     if (trailingText.length === 0) {
       editor.scrollLeft = editor.scrollWidth
     }
+  }
+
+  function syncSingleLineCaretVisibilityDeferred(): void {
+    syncSingleLineCaretVisibility()
+    if (multiline) return
+
+    // Chip content is rendered via separate React roots and can expand after
+    // mention insertion. Re-sync one tick later so the right edge stays visible.
+    setTimeout(() => {
+      syncSingleLineCaretVisibility()
+    }, 0)
+  }
+
+  function scheduleDeferredHeightSync(): void {
+    if (!multiline) return
+    if (deferredHeightSyncIdRef.current !== null) {
+      window.clearTimeout(deferredHeightSyncIdRef.current)
+    }
+    deferredHeightSyncIdRef.current = window.setTimeout(() => {
+      deferredHeightSyncIdRef.current = null
+      syncHeight()
+    }, 0)
+  }
+
+  function syncHeightAfterLayoutChange(): void {
+    syncHeight()
+    scheduleDeferredHeightSync()
   }
 
   function closeMentionMode(): void {
@@ -464,11 +492,15 @@ export function SmartTextbox({
         spacerVisibleText.length === 0 &&
         (nextSiblingText.length === 0 || !startsWithWhitespace(nextSiblingText))
       ) {
-        spacerText.textContent = CHIP_SENTINEL + ' '
+        spacerText.textContent = CHIP_SENTINEL + ' ' + CHIP_SENTINEL
         const selection = document.getSelection()
         if (selection) {
           const range = document.createRange()
-          range.setStart(spacerText, spacerText.textContent.length)
+          const trailingSentinelOffset = Math.max(
+            0,
+            spacerText.textContent.length - CHIP_SENTINEL.length
+          )
+          range.setStart(spacerText, trailingSentinelOffset)
           range.collapse(true)
           selection.removeAllRanges()
           selection.addRange(range)
@@ -481,8 +513,8 @@ export function SmartTextbox({
 
     const segments = normalizeSegments(serialize(editor, storeRef.current))
     onChange(segments)
-    syncHeight()
-    syncSingleLineCaretVisibility()
+    syncHeightAfterLayoutChange()
+    syncSingleLineCaretVisibilityDeferred()
     closeMentionMode()
   }
 
@@ -674,6 +706,7 @@ export function SmartTextbox({
     // Only done here — during normal typing, trailing newlines are legitimate.
     const cleaned = trimTrailingNewlines(segments)
     onChange(cleaned)
+    syncHeightAfterLayoutChange()
   }
 
   // ---------------------------------------------------------------------------
@@ -745,7 +778,7 @@ export function SmartTextbox({
     highlightedChipRef.current = null
     setCaretVisible(true)
 
-    syncHeight()
+    syncHeightAfterLayoutChange()
   })
 
   useEffect(() => {
@@ -801,6 +834,9 @@ export function SmartTextbox({
     const store = storeRef.current
     const chipManager = chipManagerRef.current
     return () => {
+      if (deferredHeightSyncIdRef.current !== null) {
+        window.clearTimeout(deferredHeightSyncIdRef.current)
+      }
       mentionRequestIdRef.current += 1
       mentionRangeRef.current = null
       mentionStartRef.current = null
@@ -1111,6 +1147,7 @@ export function SmartTextbox({
             className={inputClassName}
             style={{
               outline: 'none',
+              lineHeight: multiline ? '1.45' : '1.4',
               whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
               overflowX: multiline ? undefined : 'auto',
               wordBreak: multiline ? 'break-word' : undefined,
