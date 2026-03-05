@@ -1,4 +1,8 @@
-import { MENTION_ID_ATTR } from './serializer'
+import {
+  CHIP_SENTINEL,
+  MENTION_ID_ATTR,
+  stripChipSentinels,
+} from './serializer'
 
 /**
  * Insert a chip span at the given range, replacing any selected content
@@ -14,15 +18,15 @@ export function insertChipAtRange(
   range.deleteContents()
   range.insertNode(chipSpan)
 
-  // Insert an empty text node after the chip for cursor placement
-  const spacer = document.createTextNode('')
+  // Always keep a caret target after the chip.
+  const spacer = document.createTextNode(CHIP_SENTINEL)
   chipSpan.after(spacer)
 
   // Move cursor into the spacer text node
   const selection = document.getSelection()
   if (selection) {
     const newRange = document.createRange()
-    newRange.setStart(spacer, 0)
+    newRange.setStart(spacer, spacer.textContent?.length ?? 0)
     newRange.collapse(true)
     selection.removeAllRanges()
     selection.addRange(newRange)
@@ -34,34 +38,30 @@ export function insertChipAtRange(
  *
  * Returns the chip span if found, null otherwise.
  *
- * Cursor positions that count as "after a chip":
- *  - At offset 0 of a text node whose previousSibling is a chip
- *  - In an empty text node whose previousSibling is a chip
+ * This uses a backward DOM walk bounded by the editor root to handle
+ * browser placeholder shapes like `<div><br></div>` that appear around
+ * contentEditable caret positions.
  */
-export function getChipBeforeCursor(): HTMLSpanElement | null {
+export function getChipBeforeCursor(
+  editor: HTMLElement
+): HTMLSpanElement | null {
   const selection = document.getSelection()
   if (!selection || selection.rangeCount === 0) return null
 
   const range = selection.getRangeAt(0)
   if (!range.collapsed) return null
 
-  const { startContainer, startOffset } = range
+  if (!editor.contains(range.startContainer)) return null
 
-  // Cursor is in a text node at offset 0 → check previousSibling
-  if (startContainer.nodeType === Node.TEXT_NODE && startOffset === 0) {
-    const prev = startContainer.previousSibling
-    if (prev && isChipSpan(prev)) {
-      return prev as HTMLSpanElement
+  let node = getNodeBeforeCaret(range, editor)
+  while (node && node !== editor) {
+    if (isChipSpan(node)) {
+      return node as HTMLSpanElement
     }
-  }
-
-  // Cursor is at a child offset inside an element (e.g. the editor div) →
-  // check the node before the offset position
-  if (startContainer.nodeType === Node.ELEMENT_NODE && startOffset > 0) {
-    const prev = startContainer.childNodes[startOffset - 1]
-    if (prev && isChipSpan(prev)) {
-      return prev as HTMLSpanElement
+    if (!isIgnorableCursorArtifact(node)) {
+      return null
     }
+    node = previousNodeInEditor(node, editor)
   }
 
   return null
@@ -96,5 +96,93 @@ function isChipSpan(node: Node): boolean {
   return (
     node.nodeType === Node.ELEMENT_NODE &&
     (node as HTMLElement).hasAttribute(MENTION_ID_ATTR)
+  )
+}
+
+function getNodeBeforeCaret(range: Range, editor: HTMLElement): Node | null {
+  const { startContainer, startOffset } = range
+
+  if (startContainer.nodeType === Node.TEXT_NODE) {
+    const textNode = startContainer as Text
+    const leftText = stripChipSentinels(
+      (textNode.textContent ?? '').slice(0, startOffset)
+    )
+
+    // Real content to the left of the caret means we're not at a chip boundary.
+    if (leftText.trim().length > 0) return null
+
+    if (startOffset > 0) return textNode
+    return previousNodeInEditor(textNode, editor)
+  }
+
+  if (startContainer.nodeType === Node.ELEMENT_NODE) {
+    const element = startContainer as Element
+    if (startOffset > 0) {
+      const before = element.childNodes[startOffset - 1] ?? null
+      return before ? rightmostDescendant(before) : null
+    }
+    return previousNodeInEditor(element, editor)
+  }
+
+  return previousNodeInEditor(startContainer, editor)
+}
+
+function previousNodeInEditor(node: Node, editor: HTMLElement): Node | null {
+  if (node === editor) return null
+
+  if (node.previousSibling) {
+    return rightmostDescendant(node.previousSibling)
+  }
+
+  const parent = node.parentNode
+  if (!parent) return null
+  if (parent === editor) return editor
+  if (editor.contains(parent)) return parent
+  return null
+}
+
+function rightmostDescendant(node: Node): Node {
+  let current = node
+  while (current.lastChild && !isAtomicNode(current)) {
+    current = current.lastChild
+  }
+  return current
+}
+
+function isIgnorableCursorArtifact(node: Node): boolean {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = stripChipSentinels(node.textContent ?? '')
+    return text.trim().length === 0
+  }
+
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as HTMLElement
+    if (element.tagName === 'BR') return true
+    if (isChipSpan(element)) return false
+    return isPlaceholderWrapper(element)
+  }
+
+  return false
+}
+
+function isPlaceholderWrapper(element: HTMLElement): boolean {
+  if (element.hasAttribute(MENTION_ID_ATTR)) return false
+  if (!element.firstChild) return true
+
+  for (const child of element.childNodes) {
+    if (child.nodeType === Node.COMMENT_NODE) continue
+    if (!isIgnorableCursorArtifact(child)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function isAtomicNode(node: Node): boolean {
+  return (
+    isChipSpan(node) ||
+    (node.nodeType === Node.ELEMENT_NODE &&
+      (node as HTMLElement).contentEditable === 'false')
   )
 }

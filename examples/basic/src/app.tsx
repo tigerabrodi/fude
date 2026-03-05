@@ -1,6 +1,40 @@
-import { useState } from 'react'
-import { SmartTextbox } from 'fude'
 import type { Segment } from 'fude'
+import { SmartTextbox } from 'fude'
+import { useState } from 'react'
+
+function revealWhitespace(value: string): string {
+  return value
+    .replace(/ /g, '<space>')
+    .replace(/\n/g, '<newline>')
+    .replace(/\t/g, '<tab>')
+}
+
+function formatSegmentsForDebug(segments: Array<Segment>): string {
+  return JSON.stringify(
+    segments.map((segment, index) =>
+      segment.type === 'text'
+        ? {
+            ...segment,
+            segmentIndex: index,
+            valueVisible: revealWhitespace(segment.value),
+            valueLength: segment.value.length,
+          }
+        : { ...segment, segmentIndex: index }
+    ),
+    null,
+    2
+  )
+}
+
+function formatTextSegmentLengths(segments: Array<Segment>): string {
+  const lengths = segments
+    .map((segment, index) =>
+      segment.type === 'text' ? `#${index}:${segment.value.length}` : null
+    )
+    .filter((entry): entry is string => entry !== null)
+
+  return lengths.length > 0 ? lengths.join(', ') : 'none'
+}
 
 export function App() {
   const [singleValue, setSingleValue] = useState<Array<Segment>>([])
@@ -74,11 +108,35 @@ export function App() {
       <section style={{ marginTop: 24 }}>
         <h3>Current values (debug)</h3>
         <p>
-          <strong>Single-line:</strong> {JSON.stringify(singleValue)}
+          <strong>Single-line text lengths:</strong>{' '}
+          {formatTextSegmentLengths(singleValue)}
         </p>
+        <pre
+          style={{
+            background: '#f5f5f5',
+            padding: 12,
+            borderRadius: 6,
+            fontSize: 13,
+            overflow: 'auto',
+          }}
+        >
+          {formatSegmentsForDebug(singleValue)}
+        </pre>
         <p>
-          <strong>Multiline:</strong> {JSON.stringify(multiValue)}
+          <strong>Multiline text lengths:</strong>{' '}
+          {formatTextSegmentLengths(multiValue)}
         </p>
+        <pre
+          style={{
+            background: '#f5f5f5',
+            padding: 12,
+            borderRadius: 6,
+            fontSize: 13,
+            overflow: 'auto',
+          }}
+        >
+          {formatSegmentsForDebug(multiValue)}
+        </pre>
       </section>
     </div>
   )

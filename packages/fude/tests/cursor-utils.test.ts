@@ -8,7 +8,7 @@ import {
   isChipHighlighted,
   unhighlightChip,
 } from '../src/cursor-utils'
-import { MENTION_ID_ATTR } from '../src/serializer'
+import { CHIP_SENTINEL, MENTION_ID_ATTR } from '../src/serializer'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,7 +50,7 @@ describe('getChipBeforeCursor', () => {
 
     setCursorAt(textNode, 0)
 
-    expect(getChipBeforeCursor()).toBe(chip)
+    expect(getChipBeforeCursor(div)).toBe(chip)
   })
 
   it('returns null when cursor is mid-text', () => {
@@ -61,18 +61,18 @@ describe('getChipBeforeCursor', () => {
 
     setCursorAt(textNode, 3)
 
-    expect(getChipBeforeCursor()).toBeNull()
+    expect(getChipBeforeCursor(div)).toBeNull()
   })
 
   it('returns chip when cursor is in empty text node after chip', () => {
     const chip = makeChipSpan('1')
-    const spacer = document.createTextNode('')
+    const spacer = document.createTextNode(CHIP_SENTINEL)
     div.appendChild(chip)
     div.appendChild(spacer)
 
     setCursorAt(spacer, 0)
 
-    expect(getChipBeforeCursor()).toBe(chip)
+    expect(getChipBeforeCursor(div)).toBe(chip)
   })
 
   it('returns null when no chip before cursor', () => {
@@ -81,12 +81,60 @@ describe('getChipBeforeCursor', () => {
 
     setCursorAt(textNode, 0)
 
-    expect(getChipBeforeCursor()).toBeNull()
+    expect(getChipBeforeCursor(div)).toBeNull()
+  })
+
+  it('returns chip when cursor is behind a spacer text node after chip', () => {
+    const chip = makeChipSpan('1')
+    const spacer = document.createTextNode(CHIP_SENTINEL)
+    const textNode = document.createTextNode(' and make it work')
+    div.appendChild(chip)
+    div.appendChild(spacer)
+    div.appendChild(textNode)
+
+    setCursorAt(textNode, 0)
+
+    expect(getChipBeforeCursor(div)).toBe(chip)
+  })
+
+  it('returns chip when cursor is in whitespace-filled spacer after chip', () => {
+    const chip = makeChipSpan('1')
+    const spacer = document.createTextNode('\n')
+    spacer.textContent = '\n'
+    div.appendChild(chip)
+    div.appendChild(spacer)
+
+    setCursorAt(spacer, 1)
+
+    expect(getChipBeforeCursor(div)).toBe(chip)
+  })
+
+  it('returns chip when cursor is in browser placeholder wrapper after chip', () => {
+    const chip = makeChipSpan('1')
+    const wrapper = document.createElement('div')
+    wrapper.appendChild(document.createElement('br'))
+    div.appendChild(chip)
+    div.appendChild(wrapper)
+
+    setCursorAt(wrapper, 0)
+
+    expect(getChipBeforeCursor(div)).toBe(chip)
+  })
+
+  it('does not walk outside the editor root boundary', () => {
+    const outsideChip = makeChipSpan('outside')
+    document.body.appendChild(outsideChip)
+
+    const editorText = document.createTextNode('')
+    div.appendChild(editorText)
+    setCursorAt(editorText, 0)
+
+    expect(getChipBeforeCursor(div)).toBeNull()
   })
 
   it('returns null when no selection', () => {
     document.getSelection()!.removeAllRanges()
-    expect(getChipBeforeCursor()).toBeNull()
+    expect(getChipBeforeCursor(div)).toBeNull()
   })
 
   it('returns chip when cursor is at element offset after chip', () => {
@@ -96,7 +144,7 @@ describe('getChipBeforeCursor', () => {
     // Cursor at child offset 1 inside div (after the chip)
     setCursorAt(div, 1)
 
-    expect(getChipBeforeCursor()).toBe(chip)
+    expect(getChipBeforeCursor(div)).toBe(chip)
   })
 })
 
@@ -112,7 +160,7 @@ describe('insertChipAtRange', () => {
     document.body.appendChild(div)
   })
 
-  it('inserts chip and empty text node, cursor ends after spacer', () => {
+  it('inserts chip and sentinel text node, cursor ends after spacer', () => {
     const textNode = document.createTextNode('hello @query world')
     div.appendChild(textNode)
 
@@ -124,15 +172,15 @@ describe('insertChipAtRange', () => {
     const chip = makeChipSpan('1')
     insertChipAtRange(range, chip)
 
-    // DOM should be: "hello " + chip + "" + " world"
+    // DOM should be: "hello " + chip + sentinel + " world"
     expect(div.childNodes.length).toBe(4)
     expect(div.childNodes[0].textContent).toBe('hello ')
     expect(
       (div.childNodes[1] as HTMLElement).getAttribute(MENTION_ID_ATTR)
     ).toBe('1')
-    // Empty text node spacer
+    // Sentinel text node spacer
     expect(div.childNodes[2].nodeType).toBe(Node.TEXT_NODE)
-    expect(div.childNodes[2].textContent).toBe('')
+    expect(div.childNodes[2].textContent).toBe(CHIP_SENTINEL)
     expect(div.childNodes[3].textContent).toBe(' world')
 
     // Cursor should be in the spacer

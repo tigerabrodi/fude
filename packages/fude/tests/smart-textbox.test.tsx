@@ -10,6 +10,15 @@ function createItem(id: string, name: string): MentionItem {
   return { id, searchValue: name, label: name }
 }
 
+function setCursorAt(node: Node, offset: number): void {
+  const range = document.createRange()
+  range.setStart(node, offset)
+  range.collapse(true)
+  const selection = document.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
@@ -517,5 +526,309 @@ describe('chip deletion', () => {
     // Should only have text segments remaining
     const hasMention = lastCall.some((s) => s.type === 'mention')
     expect(hasMention).toBe(false)
+  })
+
+  it('does not leave trailing newlines after chip deletion', async () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'lets fix ' },
+      { type: 'mention', item },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} />
+    )
+
+    await act(() => Promise.resolve())
+
+    // Simulate browser inserting a <br> artifact (as happens during backspacing)
+    const editor = container.querySelector('[role="textbox"]')!
+    editor.appendChild(document.createElement('br'))
+
+    const chip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const chipContent = chip.firstElementChild as HTMLElement
+    fireEvent.mouseEnter(chipContent)
+
+    const deleteButton = chip.querySelector('[role="button"]')!
+    fireEvent.mouseDown(deleteButton)
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+    // No segment should end with a newline
+    for (const seg of lastCall) {
+      if (seg.type === 'text') {
+        expect(seg.value).not.toMatch(/\n+$/)
+      }
+    }
+  })
+
+  it('normalizes DOM after chip deletion (no double spaces)', async () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'lets fix ' },
+      { type: 'mention', item },
+      { type: 'text', value: ' and make it work' },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} />
+    )
+
+    await act(() => Promise.resolve())
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const textNodesBefore = Array.from(editor.childNodes).filter(
+      (n) => n.nodeType === Node.TEXT_NODE
+    ).length
+
+    const chip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const chipContent = chip.firstElementChild as HTMLElement
+    fireEvent.mouseEnter(chipContent)
+
+    const deleteButton = chip.querySelector('[role="button"]')!
+    fireEvent.mouseDown(deleteButton)
+
+    // After deletion + normalize(), adjacent text nodes should be merged
+    const textNodesAfter = Array.from(editor.childNodes).filter(
+      (n) => n.nodeType === Node.TEXT_NODE
+    ).length
+    // Should have fewer or equal text nodes than before (merged)
+    expect(textNodesAfter).toBeLessThanOrEqual(textNodesBefore)
+  })
+
+  it('collapses boundary double spaces when chip is hover-deleted', async () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'lets fix ' },
+      { type: 'mention', item },
+      { type: 'text', value: ' and make it work' },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} />
+    )
+
+    await act(() => Promise.resolve())
+
+    const chip = container.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const chipContent = chip.firstElementChild as HTMLElement
+    fireEvent.mouseEnter(chipContent)
+
+    const deleteButton = chip.querySelector('[role="button"]')!
+    fireEvent.mouseDown(deleteButton)
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+
+    expect(lastCall).toEqual([
+      { type: 'text', value: 'lets fix and make it work' },
+    ])
+  })
+
+  it('prevents first backspace from leaking newline/space from chip spacer', () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'lets fix ' },
+      { type: 'mention', item },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} multiline />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const chip = editor.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const spacer = chip.nextSibling as Text
+    spacer.textContent = '\n'
+    setCursorAt(spacer, 1)
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      bubbles: true,
+      cancelable: true,
+    })
+    const isPrevented = !editor.dispatchEvent(event)
+
+    expect(isPrevented).toBe(true)
+    expect(onChange).not.toHaveBeenCalled()
+    expect(chip.getAttribute('data-highlighted')).toBe('true')
+    expect((editor as HTMLElement).style.caretColor).toBe('transparent')
+  })
+
+  it('deletes highlighted chip on second backspace without trailing newline', () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'lets fix ' },
+      { type: 'mention', item },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} multiline />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const chip = editor.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const spacer = chip.nextSibling as Text
+    spacer.textContent = '\n'
+    setCursorAt(spacer, 1)
+
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        bubbles: true,
+        cancelable: true,
+      })
+    )
+
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        bubbles: true,
+        cancelable: true,
+      })
+    )
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+
+    expect(lastCall).toEqual([{ type: 'text', value: 'lets fix ' }])
+    expect((editor as HTMLElement).style.caretColor).not.toBe('transparent')
+    for (const seg of lastCall) {
+      if (seg.type === 'text') {
+        expect(seg.value).not.toMatch(/\n+$/)
+      }
+    }
+  })
+
+  it('positions cursor at end of preceding text after chip deletion', () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'lets fix ' },
+      { type: 'mention', item },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} multiline />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const chip = editor.querySelector(`[${MENTION_ID_ATTR}]`)!
+    const spacer = chip.nextSibling as Text
+    spacer.textContent = '\n'
+    setCursorAt(spacer, 1)
+
+    // First backspace: highlight
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        bubbles: true,
+        cancelable: true,
+      })
+    )
+
+    // Second backspace: delete
+    editor.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        bubbles: true,
+        cancelable: true,
+      })
+    )
+
+    const sel = document.getSelection()
+    expect(sel).not.toBeNull()
+    expect(sel!.rangeCount).toBeGreaterThan(0)
+
+    const range = sel!.getRangeAt(0)
+    // Cursor should be in the remaining text node "lets fix "
+    expect(range.startContainer.nodeType).toBe(Node.TEXT_NODE)
+    expect(range.startContainer.textContent).toBe('lets fix ')
+    expect(range.startOffset).toBe('lets fix '.length)
+  })
+
+  it('removes trailing <br> artifacts adjacent to chip on deletion', async () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'lets fix ' },
+      { type: 'mention', item },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} />
+    )
+
+    await act(() => Promise.resolve())
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const chip = editor.querySelector(`[${MENTION_ID_ATTR}]`)!
+
+    // Simulate browser <br> artifact after the chip's spacer
+    const br = document.createElement('br')
+    chip.parentNode!.insertBefore(br, chip.nextSibling?.nextSibling || null)
+
+    const chipContent = chip.firstElementChild as HTMLElement
+    fireEvent.mouseEnter(chipContent)
+
+    const deleteButton = chip.querySelector('[role="button"]')!
+    fireEvent.mouseDown(deleteButton)
+
+    // The <br> should have been cleaned up
+    expect(editor.querySelector('br')).toBeNull()
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+    for (const seg of lastCall) {
+      if (seg.type === 'text') {
+        expect(seg.value).not.toMatch(/\n+$/)
+      }
+    }
+  })
+
+  it('removes whitespace placeholder nodes after chip on hover delete', async () => {
+    const onChange = vi.fn()
+    const item = createItem('1', 'file.ts')
+    const value: Array<Segment> = [
+      { type: 'text', value: 'lets fix ' },
+      { type: 'mention', item },
+    ]
+
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} />
+    )
+
+    await act(() => Promise.resolve())
+
+    const editor = container.querySelector('[role="textbox"]')!
+    const chip = editor.querySelector(`[${MENTION_ID_ATTR}]`)!
+
+    // Simulate browser inserting an unmarked whitespace text node after chip.
+    chip.after(document.createTextNode(' '))
+
+    const chipContent = chip.firstElementChild as HTMLElement
+    fireEvent.mouseEnter(chipContent)
+    const deleteButton = chip.querySelector('[role="button"]')!
+    fireEvent.mouseDown(deleteButton)
+
+    expect(onChange).toHaveBeenCalled()
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ][0] as Array<Segment>
+
+    expect(lastCall).toEqual([{ type: 'text', value: 'lets fix ' }])
   })
 })

@@ -2,7 +2,12 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MentionStore } from '../src/mention-store'
-import { deserialize, MENTION_ID_ATTR, serialize } from '../src/serializer'
+import {
+  CHIP_SENTINEL,
+  deserialize,
+  MENTION_ID_ATTR,
+  serialize,
+} from '../src/serializer'
 import type { MentionItem, Segment } from '../src/types'
 
 // ---------------------------------------------------------------------------
@@ -119,6 +124,45 @@ describe('serialize', () => {
     expect(serialize(div, store)).toEqual([
       { type: 'mention', item: a },
       { type: 'mention', item: b },
+    ])
+  })
+
+  it('strips chip sentinel text after a mention', () => {
+    const item = createItem('1', 'file.ts')
+    store.set(item)
+
+    div.appendChild(makeChipSpan('1'))
+    div.appendChild(document.createTextNode(CHIP_SENTINEL))
+
+    expect(serialize(div, store)).toEqual([{ type: 'mention', item }])
+  })
+
+  it('does not serialize sentinel between adjacent chips', () => {
+    const a = createItem('1', 'a.ts')
+    const b = createItem('2', 'b.ts')
+    store.set(a)
+    store.set(b)
+
+    div.appendChild(makeChipSpan('1'))
+    div.appendChild(document.createTextNode(CHIP_SENTINEL))
+    div.appendChild(makeChipSpan('2'))
+
+    expect(serialize(div, store)).toEqual([
+      { type: 'mention', item: a },
+      { type: 'mention', item: b },
+    ])
+  })
+
+  it('strips sentinel characters inside text nodes', () => {
+    const item = createItem('1', 'file.ts')
+    store.set(item)
+
+    div.appendChild(makeChipSpan('1'))
+    div.appendChild(document.createTextNode(`${CHIP_SENTINEL} ok`))
+
+    expect(serialize(div, store)).toEqual([
+      { type: 'mention', item },
+      { type: 'text', value: ' ok' },
     ])
   })
 
@@ -288,15 +332,15 @@ describe('deserialize', () => {
     const item = createItem('1', 'file.ts')
     const fragment = deserialize([{ type: 'mention', item }], store)
 
-    // chip + empty text node spacer
+    // chip + sentinel text node
     expect(fragment.childNodes.length).toBe(2)
     const chip = fragment.childNodes[0] as HTMLElement
     expect(chip.tagName).toBe('SPAN')
     expect(chip.getAttribute(MENTION_ID_ATTR)).toBe('1')
     expect(chip.contentEditable).toBe('false')
-    // Empty text node spacer for cursor navigation
+    // Sentinel text node for cursor navigation
     expect(fragment.childNodes[1].nodeType).toBe(Node.TEXT_NODE)
-    expect(fragment.childNodes[1].textContent).toBe('')
+    expect(fragment.childNodes[1].textContent).toBe(CHIP_SENTINEL)
   })
 
   it('registers the mention item in the store', () => {
@@ -316,15 +360,15 @@ describe('deserialize', () => {
     ]
     const fragment = deserialize(segments, store)
 
-    // text + chip + empty spacer + text = 4 nodes
+    // text + chip + sentinel + text = 4 nodes
     expect(fragment.childNodes.length).toBe(4)
     expect(fragment.childNodes[0].textContent).toBe('lets fix ')
     expect(
       (fragment.childNodes[1] as HTMLElement).getAttribute(MENTION_ID_ATTR)
     ).toBe('1')
-    // Empty text node spacer
+    // Sentinel text node
     expect(fragment.childNodes[2].nodeType).toBe(Node.TEXT_NODE)
-    expect(fragment.childNodes[2].textContent).toBe('')
+    expect(fragment.childNodes[2].textContent).toBe(CHIP_SENTINEL)
     expect(fragment.childNodes[3].textContent).toBe(' and make it work')
   })
 

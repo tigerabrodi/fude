@@ -3,6 +3,13 @@ import type { Segment } from './types'
 
 /** The data attribute we put on chip spans to identify them as mentions. */
 export const MENTION_ID_ATTR = 'data-mention-id'
+/** Invisible sentinel used to keep the caret positionable after chips. */
+export const CHIP_SENTINEL = '\u200B'
+
+/** Remove all chip sentinels from a text string before serialization. */
+export function stripChipSentinels(text: string): string {
+  return text.split(CHIP_SENTINEL).join('')
+}
 
 // ---------------------------------------------------------------------------
 // serialize  (DOM → Segments)
@@ -43,7 +50,8 @@ export function serialize(
     for (const node of parent.childNodes) {
       // --- Plain text ---
       if (node.nodeType === Node.TEXT_NODE) {
-        const text = node.textContent ?? ''
+        const text = stripChipSentinels(node.textContent ?? '')
+
         // Skip empty text nodes (browsers insert these between elements)
         if (text.length > 0) {
           pendingText += text
@@ -143,10 +151,9 @@ export function deserialize(
 
       const chip = createChipSpan(segment.item.id)
       fragment.appendChild(chip)
-      // Empty text node after chip so the cursor can navigate past
-      // the contentEditable="false" element. Browsers need a text node
-      // to place the caret after an atomic inline.
-      fragment.appendChild(document.createTextNode(''))
+      // Always add a zero-width sentinel after every chip so the browser
+      // has a caret target after contentEditable=false nodes.
+      fragment.appendChild(document.createTextNode(CHIP_SENTINEL))
       continue
     }
   }

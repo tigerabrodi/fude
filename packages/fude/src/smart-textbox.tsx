@@ -9,8 +9,22 @@ import {
 import { MentionStore } from './mention-store'
 import { normalizeSegments } from './normalize-segments'
 import { segmentsEqual } from './segments-equal'
-import { deserialize, MENTION_ID_ATTR, serialize } from './serializer'
-import type { SmartTextboxProps } from './types'
+import {
+  deserialize,
+  MENTION_ID_ATTR,
+  serialize,
+  stripChipSentinels,
+} from './serializer'
+import type { Segment, SmartTextboxProps } from './types'
+
+function trimTrailingNewlines(segments: Array<Segment>): Array<Segment> {
+  if (segments.length === 0) return segments
+  const last = segments[segments.length - 1]
+  if (last.type !== 'text') return segments
+  const trimmed = last.value.replace(/\n+$/, '')
+  if (trimmed === '') return segments.slice(0, -1)
+  return [...segments.slice(0, -1), { type: 'text', value: trimmed }]
+}
 
 /**
  * Check whether a value array represents "empty" content
@@ -26,6 +40,58 @@ function isEmpty(value: SmartTextboxProps['value']): boolean {
     return true
   }
   return false
+}
+
+function isRemovablePostChipArtifact(node: Node): boolean {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return stripChipSentinels(node.textContent ?? '').trim().length === 0
+  }
+
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as HTMLElement
+    if (element.tagName === 'BR') return true
+    if (element.hasAttribute(MENTION_ID_ATTR)) return false
+    return isPlaceholderWrapper(element)
+  }
+
+  return false
+}
+
+function isPlaceholderWrapper(element: HTMLElement): boolean {
+  if (!element.firstChild) return true
+
+  for (const child of element.childNodes) {
+    if (child.nodeType === Node.COMMENT_NODE) continue
+    if (!isRemovablePostChipArtifact(child)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function collapseBoundaryDoubleSpace(marker: Comment): void {
+  const prevNode = marker.previousSibling
+  const nextNode = marker.nextSibling
+  if (
+    !prevNode ||
+    !nextNode ||
+    prevNode.nodeType !== Node.TEXT_NODE ||
+    nextNode.nodeType !== Node.TEXT_NODE
+  ) {
+    return
+  }
+
+  const prevText = prevNode.textContent ?? ''
+  const nextText = nextNode.textContent ?? ''
+  if (!prevText.endsWith(' ') || !nextText.startsWith(' ')) return
+
+  const collapsed = nextText.slice(1)
+  if (collapsed.length > 0) {
+    nextNode.textContent = collapsed
+  } else {
+    nextNode.remove()
+  }
 }
 
 export function SmartTextbox({
@@ -45,6 +111,12 @@ export function SmartTextbox({
   const storeRef = useRef(new MentionStore())
   const chipManagerRef = useRef(new ChipRootManager())
   const highlightedChipRef = useRef<HTMLSpanElement | null>(null)
+
+  function setCaretVisible(visible: boolean): void {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.style.caretColor = visible ? '' : 'transparent'
+  }
 
   // ---------------------------------------------------------------------------
   // Chip rendering
@@ -124,23 +196,65 @@ export function SmartTextbox({
     // Remove from store
     if (id) store.delete(id)
 
-    // Remove trailing empty text node sibling if present
-    const next = chip.nextSibling
-    if (next && next.nodeType === Node.TEXT_NODE && next.textContent === '') {
-      next.remove()
+    // Marker preserves the exact deletion boundary across normalize().
+    const marker = document.createComment('chip-delete-caret-marker')
+    chip.before(marker)
+
+    // Remove immediate artifacts after the chip (sentinel, placeholder text, brs, wrappers).
+    let sibling = chip.nextSibling
+    while (sibling && isRemovablePostChipArtifact(sibling)) {
+      const next = sibling.nextSibling
+      sibling.remove()
+      sibling = next
     }
 
     // Remove chip span from DOM
     chip.remove()
 
+    // Merge adjacent text nodes left by the removal to prevent visual artifacts
+    editor.normalize()
+    collapseBoundaryDoubleSpace(marker)
+
     // Clear highlight ref
     if (highlightedChipRef.current === chip) {
       highlightedChipRef.current = null
     }
+    setCaretVisible(true)
+
+    // Place cursor where the chip was:
+    // 1) start of next text 2) end of previous text 3) end of editor.
+    const sel = document.getSelection()
+    if (sel) {
+      const range = document.createRange()
+      const nextNode = marker.nextSibling
+      const prevNode = marker.previousSibling
+
+      if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
+        range.setStart(nextNode, 0)
+      } else if (prevNode && prevNode.nodeType === Node.TEXT_NODE) {
+        range.setStart(prevNode, prevNode.textContent?.length ?? 0)
+      } else if (marker.parentNode) {
+        const parent = marker.parentNode
+        const offset = Array.prototype.indexOf.call(parent.childNodes, marker)
+        range.setStart(parent, Math.max(0, offset))
+      } else if (editor.lastChild) {
+        range.setStartAfter(editor.lastChild)
+      } else {
+        range.setStart(editor, 0)
+      }
+      range.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+    marker.remove()
 
     // Re-serialize and fire onChange
     const segments = normalizeSegments(serialize(editor, store))
-    onChange(segments)
+
+    // Strip trailing newlines that are browser artifacts from chip deletion.
+    // Only done here — during normal typing, trailing newlines are legitimate.
+    const cleaned = trimTrailingNewlines(segments)
+    onChange(cleaned)
   }
 
   // ---------------------------------------------------------------------------
@@ -148,6 +262,8 @@ export function SmartTextbox({
   // ---------------------------------------------------------------------------
 
   function clearHighlight(): void {
+    setCaretVisible(true)
+
     if (highlightedChipRef.current) {
       unhighlightChip(highlightedChipRef.current)
 
@@ -260,12 +376,16 @@ export function SmartTextbox({
         return
       }
 
-      const chipBefore = getChipBeforeCursor()
+      const editor = editorRef.current
+      if (!editor) return
+
+      const chipBefore = getChipBeforeCursor(editor)
       if (chipBefore) {
         // First press → highlight the chip
         e.preventDefault()
         highlightedChipRef.current = chipBefore
         highlightChip(chipBefore)
+        setCaretVisible(false)
 
         // Re-render with highlighted=true
         const id = chipBefore.getAttribute(MENTION_ID_ATTR)
