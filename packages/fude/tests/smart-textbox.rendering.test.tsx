@@ -365,6 +365,22 @@ describe('onSubmit', () => {
     expect(isPrevented).toBe(true)
   })
 
+  it('does not clear content on submit (consumer controls clearing)', () => {
+    const onSubmit = vi.fn()
+    const onChange = vi.fn()
+    const value: Array<Segment> = [{ type: 'text', value: 'hello' }]
+    const { container } = render(
+      <SmartTextbox value={value} onChange={onChange} onSubmit={onSubmit} />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    fireEvent.keyDown(editor, { key: 'Enter' })
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onChange).not.toHaveBeenCalled()
+    expect(editor.textContent).toBe('hello')
+  })
+
   it('does not call onSubmit on plain Enter in multiline mode', () => {
     const onSubmit = vi.fn()
     const { container } = render(
@@ -429,6 +445,27 @@ describe('onSubmit', () => {
     editor.dispatchEvent(event)
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call onChange when submitting with Cmd/Ctrl+Enter', () => {
+    const onSubmit = vi.fn()
+    const onChange = vi.fn()
+    const value: Array<Segment> = [{ type: 'text', value: 'hello' }]
+    const { container } = render(
+      <SmartTextbox
+        value={value}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        multiline
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]')!
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onChange).not.toHaveBeenCalled()
+    expect(editor.textContent).toBe('hello')
   })
 
   it('does not call onSubmit when onSubmit is not provided', () => {
