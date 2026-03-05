@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/geist-mono';
+
+@theme {
+  --font-sans: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+
+  --color-bg: #0a0a0a;
+  --color-surface: #141414;
+  --color-elevated: #1c1c1c;
+  --color-border: #262626;
+  --color-border-subtle: #1a1a1a;
+  --color-border-chip: #2e2e2e;
+
+  --color-text: #fafafa;
+  --color-text-body: #aaaaaa;
+  --color-text-muted: #666666;
+  --color-text-dim: #444444;
+  --color-text-faint: #333333;
+
+  --color-log-submit: #5a9a5a;
+  --color-log-mentions: #7a7aba;
+  --color-log-suggestions: #ba9a5a;
+  --color-log-change: #555555;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
