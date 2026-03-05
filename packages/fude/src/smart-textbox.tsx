@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { useEffect, useRef } from 'react'
 import { ChipContent } from './chip-content'
 import { ChipRootManager } from './chip-root-manager'
@@ -713,6 +714,16 @@ export function SmartTextbox({
   const inputClassName = classNames?.input || undefined
   const shouldApplyDefaultInputLineHeight = !inputClassName
   const defaultInputLineHeight = multiline ? '1.6' : '1.4'
+  const inputStyle: CSSProperties = {
+    outline: 'none',
+    lineHeight: shouldApplyDefaultInputLineHeight
+      ? defaultInputLineHeight
+      : undefined,
+    whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
+    overflowX: multiline ? undefined : 'auto',
+    wordBreak: multiline ? 'break-word' : undefined,
+    ...styles?.input,
+  }
 
   const isPlaceholderVisible = isEmpty(value)
   const activeGhostSuggestion =
@@ -753,26 +764,18 @@ export function SmartTextbox({
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
             className={inputClassName}
-            style={{
-              outline: 'none',
-              lineHeight: shouldApplyDefaultInputLineHeight
-                ? defaultInputLineHeight
-                : undefined,
-              whiteSpace: multiline ? 'pre-wrap' : 'nowrap',
-              overflowX: multiline ? undefined : 'auto',
-              wordBreak: multiline ? 'break-word' : undefined,
-              ...styles?.input,
-            }}
+            style={inputStyle}
           />
           {isPlaceholderVisible && (
             <div
               aria-hidden
+              className={inputClassName}
               style={{
                 position: 'absolute',
                 inset: 0,
                 pointerEvents: 'none',
                 opacity: 0.5,
-                ...styles?.input,
+                ...inputStyle,
               }}
             >
               {placeholder}

@@ -1,6 +1,6 @@
 import type { MentionItem, Segment } from 'fude'
 import { getPlainText, SmartTextbox } from 'fude'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // --- Data helpers (from examples/basic/src/app-data.ts) ---
 
@@ -110,6 +110,8 @@ type LogEntry = {
   data: unknown
 }
 
+type CodeLanguage = 'ts' | 'tsx'
+
 // --- Constants ---
 
 const LOG_TYPE_COLORS: Record<LogEntry['type'], string> = {
@@ -118,6 +120,12 @@ const LOG_TYPE_COLORS: Record<LogEntry['type'], string> = {
   suggestions: 'text-log-suggestions',
   change: 'text-log-change',
 }
+
+const highlightedCodeCache = new Map<string, Promise<string>>()
+const SHIKI_THEME = 'min-dark'
+let highlighterPromise: Promise<{
+  codeToHtml: (code: string, options: { lang: string; theme: string }) => string
+}> | null = null
 
 const TEXTBOX_CLASS_NAMES = {
   input:
@@ -217,80 +225,50 @@ type MentionSegment = {
   item: MentionItem
 }
 
-type Segment =
-  | TextSegment
-  | MentionSegment`
+type Segment = TextSegment | MentionSegment`
 
 const EXAMPLE_VALUE_CODE = `[
-  { type: 'text',
-    value: 'lets fix ' },
-  { type: 'mention',
+  { type: 'text', value: 'lets fix ' },
+  {
+    type: 'mention',
     item: {
       id: '1',
-      searchValue:
-        'use-image-drag.ts',
-      label:
-        'use-image-drag.ts',
-    }},
-  { type: 'text',
-    value: ' and make it' },
+      searchValue: 'use-image-drag.ts',
+      label: 'use-image-drag.ts',
+    },
+  },
+  { type: 'text', value: ' and make it work' },
 ]`
 
-const QUICK_START_CODE = `import {
-  SmartTextbox,
-  fuzzyFilter,
-  getPlainText,
-} from 'fude'
-import type {
-  Segment, MentionItem
-} from 'fude'
+const QUICK_START_CODE = `import { useState } from 'react'
+import { SmartTextbox, fuzzyFilter, getPlainText } from 'fude'
+import type { MentionItem, Segment } from 'fude'
 
 const files: MentionItem[] = [
-  { id: '1',
-    searchValue:
-      'use-image-drag.ts',
-    label: 'use-image-drag.ts'
-  },
+  { id: '1', searchValue: 'use-image-drag.ts', label: 'use-image-drag.ts' },
 ]
 
 export function MyInput() {
-  const [segments, set] =
-    useState<Segment[]>([])
+  const [segments, setSegments] = useState<Array<Segment>>([])
 
   return (
     <SmartTextbox
       value={segments}
-      onChange={set}
-      onFetchMentions={
-        async (q) =>
-          fuzzyFilter(q, files)
-      }
-      onSubmit={(segs) =>
-        console.log(
-          getPlainText(segs)
-        )
-      }
+      onChange={setSegments}
+      onFetchMentions={async (query) => fuzzyFilter(query, files)}
+      onSubmit={(nextSegments) => console.log(getPlainText(nextSegments))}
     />
   )
 }`
 
 const TAILWIND_EXAMPLE_CODE = `<SmartTextbox
   classNames={{
-    input:
-      'bg-zinc-900 text-white',
-    tag:
-      'bg-zinc-800
-       border-zinc-600
-       text-zinc-300',
-    tagHighlighted:
-      'border-white',
-    dropdown:
-      'bg-zinc-900
-       border-zinc-700',
-    dropdownItem:
-      'hover:bg-zinc-800',
-    ghostText:
-      'text-white/20',
+    input: 'bg-zinc-900 text-white',
+    tag: 'bg-zinc-800 border-zinc-600 text-zinc-300',
+    tagHighlighted: 'border-white',
+    dropdown: 'bg-zinc-900 border-zinc-700',
+    dropdownItem: 'hover:bg-zinc-800',
+    ghostText: 'text-white/20',
   }}
 />`
 
@@ -300,6 +278,56 @@ tagIcon · tagHighlighted
 tagDeleteIcon
 dropdown · dropdownItem
 ghostText · tooltip`
+
+async function getHighlighter() {
+  if (!highlighterPromise) {
+    highlighterPromise = Promise.all([
+      import('shiki/core'),
+      import('shiki/engine/javascript'),
+      import('shiki/langs/typescript.mjs'),
+      import('shiki/langs/tsx.mjs'),
+      import('shiki/themes/min-dark.mjs'),
+    ]).then(
+      ([
+        { createHighlighterCore },
+        { createJavaScriptRegexEngine },
+        { default: typescriptLanguage },
+        { default: tsxLanguage },
+        { default: minDarkTheme },
+      ]) =>
+        createHighlighterCore({
+          themes: [minDarkTheme],
+          langs: [typescriptLanguage, tsxLanguage],
+          engine: createJavaScriptRegexEngine(),
+        })
+    )
+  }
+
+  return highlighterPromise
+}
+
+async function getHighlightedCode(
+  code: string,
+  language: CodeLanguage
+): Promise<string> {
+  const cacheKey = `${SHIKI_THEME}:${language}:${code}`
+  const cached = highlightedCodeCache.get(cacheKey)
+
+  if (cached) {
+    return cached
+  }
+
+  const highlighted = getHighlighter().then((highlighter) =>
+    highlighter.codeToHtml(code, {
+      lang: language === 'ts' ? 'typescript' : language,
+      theme: SHIKI_THEME,
+    })
+  )
+
+  highlightedCodeCache.set(cacheKey, highlighted)
+
+  return highlighted
+}
 
 // --- Components ---
 
@@ -327,7 +355,42 @@ function SectionDesc({ children }: { children: React.ReactNode }) {
   )
 }
 
-function CodeBlock({ label, code }: { label: string; code: string }) {
+function CodeBlock({
+  label,
+  code,
+  language,
+}: {
+  label: string
+  code: string
+  language?: CodeLanguage
+}) {
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!language) {
+      setHighlightedHtml(null)
+      return
+    }
+
+    let isCancelled = false
+
+    void getHighlightedCode(code, language)
+      .then((html) => {
+        if (!isCancelled) {
+          setHighlightedHtml(html)
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setHighlightedHtml(null)
+        }
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [code, language])
+
   return (
     <div className="flex flex-col">
       <div className="flex items-center rounded-t-lg border border-border bg-surface px-[14px] py-2">
@@ -335,10 +398,12 @@ function CodeBlock({ label, code }: { label: string; code: string }) {
           {label}
         </span>
       </div>
-      <div className="overflow-x-auto rounded-b-lg border-x border-b border-border bg-[#111111] px-[14px] py-[14px]">
-        <pre className="font-mono text-[11px] leading-[19px] text-text-body whitespace-pre">
-          {code}
-        </pre>
+      <div className="code-block-body overflow-x-auto rounded-b-lg border-x border-b border-border bg-[#111111] px-3 py-3 font-mono text-[11px] leading-[18px] text-text-body md:px-[13px] md:py-[13px] md:text-[12px] md:leading-[19px]">
+        {highlightedHtml ? (
+          <div dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+        ) : (
+          <pre className="whitespace-pre">{code}</pre>
+        )}
       </div>
     </div>
   )
@@ -655,10 +720,18 @@ export function App() {
         </div>
         <div className="flex flex-col gap-6 md:flex-row md:gap-8">
           <div className="flex-1">
-            <CodeBlock label="Type definition" code={TYPE_DEFINITION_CODE} />
+            <CodeBlock
+              label="Type definition"
+              code={TYPE_DEFINITION_CODE}
+              language="ts"
+            />
           </div>
           <div className="flex-1">
-            <CodeBlock label="Example value" code={EXAMPLE_VALUE_CODE} />
+            <CodeBlock
+              label="Example value"
+              code={EXAMPLE_VALUE_CODE}
+              language="ts"
+            />
           </div>
         </div>
       </section>
@@ -670,7 +743,11 @@ export function App() {
           <SectionHeading>Up and running in minutes</SectionHeading>
         </div>
         <div className="md:max-w-[720px]">
-          <CodeBlock label="Basic usage" code={QUICK_START_CODE} />
+          <CodeBlock
+            label="Basic usage"
+            code={QUICK_START_CODE}
+            language="tsx"
+          />
         </div>
       </section>
 
@@ -746,7 +823,11 @@ export function App() {
         </div>
         <div className="flex flex-col gap-6 md:flex-row md:gap-8">
           <div className="flex-1">
-            <CodeBlock label="Tailwind example" code={TAILWIND_EXAMPLE_CODE} />
+            <CodeBlock
+              label="Tailwind example"
+              code={TAILWIND_EXAMPLE_CODE}
+              language="tsx"
+            />
           </div>
           <div className="flex-1">
             <CodeBlock label="classNames keys" code={CLASSNAMES_KEYS} />

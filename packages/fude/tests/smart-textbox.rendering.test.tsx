@@ -140,6 +140,20 @@ describe('placeholder', () => {
     const placeholder = container.querySelector('[aria-hidden]')
     expect(placeholder!.textContent).toBe('Ask a question...')
   })
+
+  it('applies input className to the placeholder overlay', () => {
+    const { container } = render(
+      <SmartTextbox
+        value={[]}
+        onChange={() => {}}
+        placeholder="Ask a question..."
+        classNames={{ input: 'custom-input px-4 py-3 leading-6' }}
+      />
+    )
+
+    const placeholder = container.querySelector('[aria-hidden]')
+    expect(placeholder!.classList.contains('custom-input')).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------

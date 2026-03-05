@@ -32,3 +32,26 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+.code-block-body pre {
+  margin: 0;
+}
+
+.code-block-body .shiki {
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  background-color: transparent !important;
+}
+
+.code-block-body .shiki code {
+  display: block;
+  white-space: normal;
+  font-family: var(--font-mono) !important;
+}
+
+.code-block-body .shiki .line {
+  display: block;
+  white-space: pre;
+  line-height: inherit;
+}

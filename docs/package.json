@@ -8,11 +8,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.2.0",
     "@fontsource-variable/geist-mono": "^5.2.0",
+    "@fontsource-variable/inter": "^5.2.0",
     "fude": "workspace:*",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "shiki": "^4.0.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",
