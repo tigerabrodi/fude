@@ -169,6 +169,43 @@ describe('ghost suggestions', () => {
     expect(lastCall).toEqual([{ type: 'text', value: 'hello world' }])
   })
 
+  it('accepts the visible ghost suggestion on pointerdown without blurring the editor', async () => {
+    vi.useFakeTimers()
+    const onChange = vi.fn()
+    const onFetchSuggestions = vi
+      .fn<SuggestionFetcher>()
+      .mockResolvedValue([' world'])
+
+    const { container } = render(
+      <GhostTestHarness
+        onFetchSuggestions={onFetchSuggestions}
+        onChangeSpy={onChange}
+        multiline={false}
+        classNames={{ ghostText: 'ghost-text' }}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]') as HTMLElement
+    editor.focus()
+    replaceEditorText(editor, 'hello')
+    fireEvent.input(editor)
+    await advanceFakeTime(300)
+
+    const hitbox = container.querySelector(
+      '[data-ghost-text-hitbox]'
+    ) as HTMLElement
+    expect(hitbox).not.toBeNull()
+
+    fireEvent.pointerDown(hitbox)
+
+    const lastCall = onChange.mock.calls[
+      onChange.mock.calls.length - 1
+    ]?.[0] as Array<Segment>
+    expect(lastCall).toEqual([{ type: 'text', value: 'hello world' }])
+    expect(document.activeElement).toBe(editor)
+    expect(container.querySelector('[data-ghost-text-hitbox]')).toBeNull()
+  })
+
   it('cycles ghost suggestions with Shift+Tab', async () => {
     vi.useFakeTimers()
     const onFetchSuggestions = vi

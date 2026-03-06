@@ -1,4 +1,8 @@
-import { MENTION_ID_ATTR, stripChipSentinels } from './serializer'
+import {
+  CHIP_SENTINEL,
+  MENTION_ID_ATTR,
+  stripChipSentinels,
+} from './serializer'
 import type { Segment, SmartTextboxProps } from './types'
 
 export type MentionRect = {
@@ -9,6 +13,8 @@ export type MentionRect = {
   width: number
   height: number
 }
+
+export type VisibleViewportRect = MentionRect
 
 export type CharacterBeforeCaret = {
   char: string
@@ -116,6 +122,112 @@ export function toMentionRect(rect: DOMRect): MentionRect {
     width: toFiniteNumber(rect.width),
     height: toFiniteNumber(rect.height),
   }
+}
+
+export function getVisibleViewportRect(): VisibleViewportRect {
+  if (typeof window === 'undefined') {
+    return {
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+    }
+  }
+
+  const visualViewport = window.visualViewport
+  if (visualViewport) {
+    const top = toFiniteNumber(visualViewport.offsetTop)
+    const left = toFiniteNumber(visualViewport.offsetLeft)
+    const width = toFiniteNumber(visualViewport.width)
+    const height = toFiniteNumber(visualViewport.height)
+
+    return {
+      top,
+      left,
+      right: left + width,
+      bottom: top + height,
+      width,
+      height,
+    }
+  }
+
+  const width =
+    toFiniteNumber(window.innerWidth) ||
+    toFiniteNumber(document.documentElement.clientWidth)
+  const height =
+    toFiniteNumber(window.innerHeight) ||
+    toFiniteNumber(document.documentElement.clientHeight)
+
+  return {
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: height,
+    width,
+    height,
+  }
+}
+
+export function getCollapsedCaretRect(range: Range): DOMRect | null {
+  if (!range.collapsed) return null
+
+  const originalStartContainer = range.startContainer
+  const originalStartOffset = range.startOffset
+
+  let rect: DOMRect
+  try {
+    rect = range.getBoundingClientRect()
+  } catch {
+    return null
+  }
+
+  if (rect.width > 0 || rect.height > 0) {
+    return rect
+  }
+
+  const marker = document.createElement('span')
+  marker.textContent = CHIP_SENTINEL
+  marker.style.display = 'inline'
+  marker.style.padding = '0'
+  marker.style.margin = '0'
+  marker.style.lineHeight = 'inherit'
+  marker.style.verticalAlign = 'top'
+  marker.style.opacity = '0'
+  marker.style.pointerEvents = 'none'
+
+  const markerRange = range.cloneRange()
+  try {
+    markerRange.insertNode(marker)
+    rect = marker.getBoundingClientRect()
+
+    const selection = document.getSelection()
+    if (selection) {
+      const restoreRange = document.createRange()
+      try {
+        const maxOffset =
+          originalStartContainer.nodeType === Node.TEXT_NODE
+            ? (originalStartContainer.textContent?.length ?? 0)
+            : originalStartContainer.childNodes.length
+        restoreRange.setStart(
+          originalStartContainer,
+          Math.min(originalStartOffset, maxOffset)
+        )
+      } catch {
+        restoreRange.setStartAfter(marker)
+      }
+      restoreRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(restoreRange)
+    }
+  } catch {
+    return null
+  } finally {
+    marker.remove()
+  }
+
+  return rect
 }
 
 export function getRightmostEditableText(node: Node): Text | null {

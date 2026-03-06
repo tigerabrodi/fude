@@ -9,8 +9,9 @@ import { stripChipSentinels } from './serializer'
 import {
   containsWhitespace,
   getCharacterBeforeCaret,
+  getCollapsedCaretRect,
+  getVisibleViewportRect,
   toFiniteNumber,
-  toMentionRect,
   type MentionRect,
 } from './smart-textbox-utils'
 import type { MentionItem } from './types'
@@ -23,6 +24,26 @@ type MentionPoint = {
 type MentionDropdownPosition = {
   top: number
   left: number
+  width?: number
+  minWidth: number
+  maxWidth: number
+  maxHeight: number
+  placement: 'below' | 'above' | 'tray'
+}
+
+const MENTION_DROPDOWN_MARGIN = 8
+const MENTION_DROPDOWN_GAP = 4
+const MENTION_DROPDOWN_MIN_WIDTH = 220
+const MENTION_DROPDOWN_MAX_WIDTH = 320
+const MENTION_DROPDOWN_MIN_USABLE_HEIGHT = 120
+const MENTION_DROPDOWN_TRAY_MAX_HEIGHT = 240
+const DEFAULT_MENTION_DROPDOWN_POSITION: MentionDropdownPosition = {
+  top: 0,
+  left: 0,
+  minWidth: MENTION_DROPDOWN_MIN_WIDTH,
+  maxWidth: MENTION_DROPDOWN_MAX_WIDTH,
+  maxHeight: MENTION_DROPDOWN_TRAY_MAX_HEIGHT,
+  placement: 'below',
 }
 
 type UseSmartTextboxMentionsParams = {
@@ -64,10 +85,9 @@ export function useSmartTextboxMentions({
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
   const [mentionAnchorRect, setMentionAnchorRect] =
     useState<MentionRect | null>(null)
-  const [mentionDropdownPosition, setMentionDropdownPosition] = useState({
-    top: 0,
-    left: 0,
-  })
+  const [mentionDropdownPosition, setMentionDropdownPosition] = useState(
+    DEFAULT_MENTION_DROPDOWN_POSITION
+  )
   const mentionRequestIdRef = useRef(0)
   const mentionLastFetchQueryRef = useRef<string | null>(null)
   const mentionRangeRef = useRef<Range | null>(null)
@@ -99,6 +119,7 @@ export function useSmartTextboxMentions({
     mentionRangeRef.current = null
     mentionStartRef.current = null
     setMentionAnchorRect(null)
+    setMentionDropdownPosition(DEFAULT_MENTION_DROPDOWN_POSITION)
     setMentionItems([])
     setMentionActiveIndex(0)
     setMentionQueryValue('')
@@ -138,6 +159,47 @@ export function useSmartTextboxMentions({
       setMentionItems([])
       setMentionActiveIndex(0)
     }
+  }
+
+  function updateMentionAnchorFromRange(caretRange: Range): boolean {
+    const caretRect = getCollapsedCaretRect(caretRange)
+    if (!caretRect) {
+      setMentionAnchorRect(null)
+      return false
+    }
+
+    const viewport = getVisibleViewportRect()
+    setMentionAnchorRect({
+      top: toFiniteNumber(caretRect.top) + viewport.top,
+      left: toFiniteNumber(caretRect.left) + viewport.left,
+      right: toFiniteNumber(caretRect.right) + viewport.left,
+      bottom: toFiniteNumber(caretRect.bottom) + viewport.top,
+      width: toFiniteNumber(caretRect.width),
+      height: toFiniteNumber(caretRect.height),
+    })
+    return true
+  }
+
+  function updateMentionAnchorFromSelection(): boolean {
+    const editor = editorRef.current
+    if (!editor) {
+      setMentionAnchorRect(null)
+      return false
+    }
+
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) {
+      setMentionAnchorRect(null)
+      return false
+    }
+
+    const caretRange = selection.getRangeAt(0)
+    if (!caretRange.collapsed || !editor.contains(caretRange.startContainer)) {
+      setMentionAnchorRect(null)
+      return false
+    }
+
+    return updateMentionAnchorFromRange(caretRange)
   }
 
   function openMentionFromCurrentCaret(): boolean {
@@ -190,7 +252,8 @@ export function useSmartTextboxMentions({
     setMentionQueryValue('')
     setMentionItems([])
     setMentionActiveIndex(0)
-    setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
+    setMentionDropdownPosition(DEFAULT_MENTION_DROPDOWN_POSITION)
+    updateMentionAnchorFromRange(caretRange)
     void fetchMentions('')
     return true
   }
@@ -239,7 +302,7 @@ export function useSmartTextboxMentions({
     }
 
     mentionRangeRef.current = mentionRange
-    setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
+    updateMentionAnchorFromRange(caretRange)
 
     if (query !== mentionQueryRef.current) {
       setMentionQueryValue(query)
@@ -309,43 +372,132 @@ export function useSmartTextboxMentions({
     const dropdown = mentionDropdownRef.current
     if (!dropdown) return
 
-    const viewportWidth =
-      window.innerWidth || document.documentElement.clientWidth
-    const viewportHeight =
-      window.innerHeight || document.documentElement.clientHeight
+    const viewport = getVisibleViewportRect()
     const dropdownRect = dropdown.getBoundingClientRect()
     const dropdownWidth = toFiniteNumber(dropdownRect.width)
     const dropdownHeight = toFiniteNumber(dropdownRect.height)
+    const horizontalInset = viewport.left + MENTION_DROPDOWN_MARGIN
+    const availableWidth = Math.max(
+      0,
+      viewport.width - MENTION_DROPDOWN_MARGIN * 2
+    )
+    const anchoredMinWidth = Math.min(
+      MENTION_DROPDOWN_MIN_WIDTH,
+      availableWidth
+    )
+    const anchoredMaxWidth = Math.min(
+      MENTION_DROPDOWN_MAX_WIDTH,
+      availableWidth
+    )
+    const renderedAnchoredWidth = Math.min(
+      Math.max(dropdownWidth, anchoredMinWidth),
+      Math.max(anchoredMaxWidth, anchoredMinWidth)
+    )
 
-    const minMargin = 8
-    const gap = 4
+    const spaceBelow = Math.max(
+      0,
+      viewport.bottom -
+        mentionAnchorRect.bottom -
+        MENTION_DROPDOWN_GAP -
+        MENTION_DROPDOWN_MARGIN
+    )
+    const spaceAbove = Math.max(
+      0,
+      mentionAnchorRect.top -
+        viewport.top -
+        MENTION_DROPDOWN_GAP -
+        MENTION_DROPDOWN_MARGIN
+    )
 
-    let left = mentionAnchorRect.left
-    let top = mentionAnchorRect.bottom + gap
+    let nextPosition: MentionDropdownPosition
 
-    if (left + dropdownWidth > viewportWidth - minMargin) {
-      left = Math.max(minMargin, viewportWidth - dropdownWidth - minMargin)
+    if (spaceBelow >= MENTION_DROPDOWN_MIN_USABLE_HEIGHT) {
+      let left = mentionAnchorRect.right
+      if (
+        left + renderedAnchoredWidth >
+        viewport.right - MENTION_DROPDOWN_MARGIN
+      ) {
+        left = viewport.right - renderedAnchoredWidth - MENTION_DROPDOWN_MARGIN
+      }
+      left = Math.max(horizontalInset, left)
+
+      nextPosition = {
+        top: mentionAnchorRect.bottom + MENTION_DROPDOWN_GAP,
+        left,
+        minWidth: anchoredMinWidth,
+        maxWidth: Math.max(anchoredMaxWidth, anchoredMinWidth),
+        maxHeight: spaceBelow,
+        placement: 'below',
+      }
+    } else if (spaceAbove >= MENTION_DROPDOWN_MIN_USABLE_HEIGHT) {
+      let left = mentionAnchorRect.right
+      if (
+        left + renderedAnchoredWidth >
+        viewport.right - MENTION_DROPDOWN_MARGIN
+      ) {
+        left = viewport.right - renderedAnchoredWidth - MENTION_DROPDOWN_MARGIN
+      }
+      left = Math.max(horizontalInset, left)
+
+      const renderedHeight = Math.min(dropdownHeight, spaceAbove)
+      const top = Math.max(
+        viewport.top + MENTION_DROPDOWN_MARGIN,
+        mentionAnchorRect.top - MENTION_DROPDOWN_GAP - renderedHeight
+      )
+
+      nextPosition = {
+        top,
+        left,
+        minWidth: anchoredMinWidth,
+        maxWidth: Math.max(anchoredMaxWidth, anchoredMinWidth),
+        maxHeight: spaceAbove,
+        placement: 'above',
+      }
+    } else {
+      const trayWidth = Math.max(0, availableWidth)
+      const trayMaxHeight = Math.min(
+        MENTION_DROPDOWN_TRAY_MAX_HEIGHT,
+        Math.max(0, viewport.height - MENTION_DROPDOWN_MARGIN * 2)
+      )
+      const renderedHeight = Math.min(dropdownHeight, trayMaxHeight)
+
+      nextPosition = {
+        top: Math.max(
+          viewport.top + MENTION_DROPDOWN_MARGIN,
+          viewport.bottom - MENTION_DROPDOWN_MARGIN - renderedHeight
+        ),
+        left: horizontalInset,
+        width: trayWidth,
+        minWidth: trayWidth,
+        maxWidth: trayWidth,
+        maxHeight: trayMaxHeight,
+        placement: 'tray',
+      }
     }
 
-    const canFlipAbove =
-      mentionAnchorRect.top - gap - dropdownHeight >= minMargin
-    if (top + dropdownHeight > viewportHeight - minMargin && canFlipAbove) {
-      top = mentionAnchorRect.top - gap - dropdownHeight
+    if (
+      !Number.isFinite(nextPosition.top) ||
+      !Number.isFinite(nextPosition.left) ||
+      !Number.isFinite(nextPosition.minWidth) ||
+      !Number.isFinite(nextPosition.maxWidth) ||
+      !Number.isFinite(nextPosition.maxHeight)
+    ) {
+      return
     }
-
-    top = Math.min(top, viewportHeight - dropdownHeight - minMargin)
-    top = Math.max(minMargin, top)
-    left = Math.max(minMargin, left)
-    if (!Number.isFinite(top) || !Number.isFinite(left)) return
 
     setMentionDropdownPosition((previous) => {
       if (
-        Math.abs(previous.top - top) < 0.5 &&
-        Math.abs(previous.left - left) < 0.5
+        Math.abs(previous.top - nextPosition.top) < 0.5 &&
+        Math.abs(previous.left - nextPosition.left) < 0.5 &&
+        Math.abs(previous.minWidth - nextPosition.minWidth) < 0.5 &&
+        Math.abs(previous.maxWidth - nextPosition.maxWidth) < 0.5 &&
+        Math.abs(previous.maxHeight - nextPosition.maxHeight) < 0.5 &&
+        Math.abs((previous.width ?? 0) - (nextPosition.width ?? 0)) < 0.5 &&
+        previous.placement === nextPosition.placement
       ) {
         return previous
       }
-      return { top, left }
+      return nextPosition
     })
   }
 
@@ -358,10 +510,8 @@ export function useSmartTextboxMentions({
   useEffect(() => {
     if (!isMentionOpen) return
 
-    function syncAnchorFromRange(): void {
-      const mentionRange = mentionRangeRef.current
-      if (!mentionRange) return
-      setMentionAnchorRect(toMentionRect(mentionRange.getBoundingClientRect()))
+    function syncAnchorFromSelection(): void {
+      updateMentionAnchorFromSelection()
     }
 
     function handlePointerDown(event: PointerEvent): void {
@@ -375,14 +525,20 @@ export function useSmartTextboxMentions({
       closeMentionMode()
     }
 
+    const visualViewport = window.visualViewport
+
     document.addEventListener('pointerdown', handlePointerDown, true)
-    window.addEventListener('resize', syncAnchorFromRange)
-    window.addEventListener('scroll', syncAnchorFromRange, true)
+    window.addEventListener('resize', syncAnchorFromSelection)
+    window.addEventListener('scroll', syncAnchorFromSelection, true)
+    visualViewport?.addEventListener('resize', syncAnchorFromSelection)
+    visualViewport?.addEventListener('scroll', syncAnchorFromSelection)
 
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown, true)
-      window.removeEventListener('resize', syncAnchorFromRange)
-      window.removeEventListener('scroll', syncAnchorFromRange, true)
+      window.removeEventListener('resize', syncAnchorFromSelection)
+      window.removeEventListener('scroll', syncAnchorFromSelection, true)
+      visualViewport?.removeEventListener('resize', syncAnchorFromSelection)
+      visualViewport?.removeEventListener('scroll', syncAnchorFromSelection)
     }
   })
 

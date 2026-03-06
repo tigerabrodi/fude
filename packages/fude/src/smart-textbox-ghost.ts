@@ -6,8 +6,8 @@ import {
   type KeyboardEvent,
   type MutableRefObject,
 } from 'react'
-import { CHIP_SENTINEL } from './serializer'
 import {
+  getCollapsedCaretRect,
   nodeHasVisibleContent,
   toFiniteNumber,
   toPlainTextForGhostInternal,
@@ -39,6 +39,7 @@ type UseSmartTextboxGhostResult = {
   clearGhostState: (invalidateRequest?: boolean) => void
   scheduleGhostFetch: (segments: Array<Segment>) => void
   handleGhostKeyDown: (event: KeyboardEvent<HTMLDivElement>) => boolean
+  acceptGhostSuggestion: () => void
 }
 
 export function useSmartTextboxGhost({
@@ -116,34 +117,10 @@ export function useSmartTextboxGhost({
       return false
     }
 
-    let rect = selectionRange.getBoundingClientRect()
-    if (rect.width <= 0 && rect.height <= 0) {
-      const marker = document.createElement('span')
-      marker.textContent = CHIP_SENTINEL
-      marker.style.display = 'inline'
-      marker.style.padding = '0'
-      marker.style.margin = '0'
-      marker.style.lineHeight = 'inherit'
-      marker.style.verticalAlign = 'top'
-      marker.style.opacity = '0'
-      marker.style.pointerEvents = 'none'
-
-      const markerRange = selectionRange.cloneRange()
-      try {
-        markerRange.insertNode(marker)
-        rect = marker.getBoundingClientRect()
-
-        const selection = document.getSelection()
-        if (selection) {
-          const restoreRange = document.createRange()
-          restoreRange.setStartAfter(marker)
-          restoreRange.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(restoreRange)
-        }
-      } finally {
-        marker.remove()
-      }
+    const rect = getCollapsedCaretRect(selectionRange)
+    if (!rect) {
+      setGhostAnchor(null)
+      return false
     }
 
     const editorComputed = window.getComputedStyle(editor)
@@ -419,5 +396,6 @@ export function useSmartTextboxGhost({
     clearGhostState,
     scheduleGhostFetch,
     handleGhostKeyDown,
+    acceptGhostSuggestion,
   }
 }

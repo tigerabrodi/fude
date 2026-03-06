@@ -223,11 +223,17 @@ export function SmartTextbox({
     if (spacer && spacer.nodeType === Node.TEXT_NODE) {
       const spacerText = spacer as Text
       const spacerVisibleText = stripChipSentinels(spacerText.textContent ?? '')
-      const nextSibling = spacerText.nextSibling
-      const nextSiblingText =
-        nextSibling && nextSibling.nodeType === Node.TEXT_NODE
-          ? stripChipSentinels(nextSibling.textContent ?? '')
-          : ''
+      let nextSiblingText = ''
+      let nextSibling = spacerText.nextSibling
+      while (nextSibling) {
+        if (nextSibling.nodeType !== Node.TEXT_NODE) break
+        const visibleText = stripChipSentinels(nextSibling.textContent ?? '')
+        if (visibleText.length > 0) {
+          nextSiblingText = visibleText
+          break
+        }
+        nextSibling = nextSibling.nextSibling
+      }
 
       if (
         spacerVisibleText.length === 0 &&
@@ -788,6 +794,10 @@ export function SmartTextbox({
             typography={ghost.ghostTypography}
             classNames={classNames}
             styles={styles}
+            onGhostPointerDown={(event) => {
+              event.preventDefault()
+              ghost.acceptGhostSuggestion()
+            }}
           />
         </div>
       </div>
@@ -804,7 +814,7 @@ export function SmartTextbox({
         styles={styles}
         defaultTagIcon={defaultTagIcon}
         onMentionMouseEnter={(index) => mention.setMentionActiveIndex(index)}
-        onMentionMouseDown={(item, event) => {
+        onMentionPointerDown={(item, event) => {
           event.preventDefault()
           mention.selectMentionItem(item)
         }}
