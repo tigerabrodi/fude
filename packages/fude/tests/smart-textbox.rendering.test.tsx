@@ -279,6 +279,22 @@ describe('styling', () => {
     const editor = container.querySelector('[role="textbox"]') as HTMLElement
     expect(editor.style.overflowX).toBe('auto')
   })
+
+  it('keeps wrapper overflow hidden in single-line mode and visible in multiline mode', () => {
+    const singleLine = render(<SmartTextbox value={[]} onChange={() => {}} />)
+    const singleLineEditor = singleLine.container.querySelector(
+      '[role="textbox"]'
+    ) as HTMLElement
+    expect(singleLineEditor.parentElement?.style.overflow).toBe('hidden')
+
+    const multiline = render(
+      <SmartTextbox value={[]} onChange={() => {}} multiline />
+    )
+    const multilineEditor = multiline.container.querySelector(
+      '[role="textbox"]'
+    ) as HTMLElement
+    expect(multilineEditor.parentElement?.style.overflow).toBe('visible')
+  })
 })
 
 // ---------------------------------------------------------------------------

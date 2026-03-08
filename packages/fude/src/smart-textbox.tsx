@@ -278,6 +278,7 @@ export function SmartTextbox({
     onFetchSuggestions,
     autocompleteDelay,
     trailingLength,
+    multiline: Boolean(multiline),
     mentionIsOpenRef: mention.mentionIsOpenRef,
     isComposingRef,
     onAcceptSuggestion: () => {
@@ -736,7 +737,7 @@ export function SmartTextbox({
     ghost.ghostSuggestions[ghost.ghostActiveIndex] ?? ''
   const isGhostVisible =
     !mention.isMentionOpen &&
-    ghost.ghostAnchor !== null &&
+    ghost.ghostLayout !== null &&
     activeGhostSuggestion.length > 0 &&
     ghost.ghostActiveIndex >= 0 &&
     ghost.ghostActiveIndex < ghost.ghostSuggestions.length
@@ -752,7 +753,10 @@ export function SmartTextbox({
       >
         <div
           ref={wrapperRef}
-          style={{ position: 'relative', overflow: 'hidden' }}
+          style={{
+            position: 'relative',
+            overflow: multiline ? 'visible' : 'hidden',
+          }}
         >
           <div
             ref={editorRef}
@@ -790,7 +794,7 @@ export function SmartTextbox({
           <GhostTextOverlay
             isVisible={isGhostVisible}
             text={activeGhostSuggestion}
-            anchor={ghost.ghostAnchor}
+            anchor={ghost.ghostLayout}
             typography={ghost.ghostTypography}
             classNames={classNames}
             styles={styles}

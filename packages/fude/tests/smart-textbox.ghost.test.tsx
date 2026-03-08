@@ -17,6 +17,78 @@ import {
   updateTextNodeValue,
 } from './helpers/smart-textbox-test-utils'
 
+function makeRect({
+  top,
+  left,
+  width,
+  height,
+}: {
+  top: number
+  left: number
+  width: number
+  height: number
+}): DOMRect {
+  return {
+    x: left,
+    y: top,
+    top,
+    left,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+    toJSON: () => ({}),
+  } as DOMRect
+}
+
+function mockRangeRect(rect: {
+  top: number
+  left: number
+  width: number
+  height: number
+}): () => void {
+  const original = Range.prototype.getBoundingClientRect.bind(Range.prototype)
+  Range.prototype.getBoundingClientRect = () => makeRect(rect)
+  return () => {
+    Range.prototype.getBoundingClientRect = original
+  }
+}
+
+function mockElementRect(
+  element: Element,
+  rect: {
+    top: number
+    left: number
+    width: number
+    height: number
+  }
+): () => void {
+  const original = element.getBoundingClientRect.bind(element)
+  element.getBoundingClientRect = () => makeRect(rect)
+  return () => {
+    element.getBoundingClientRect = original
+  }
+}
+
+function mockNumericProperty<T extends object, K extends keyof T>(
+  object: T,
+  key: K,
+  value: number
+): () => void {
+  const original = Object.getOwnPropertyDescriptor(object, key)
+  Object.defineProperty(object, key, {
+    configurable: true,
+    value,
+  })
+  return () => {
+    if (original) {
+      Object.defineProperty(object, key, original)
+    } else {
+      Reflect.deleteProperty(object, key)
+    }
+  }
+}
+
 afterEach(() => {
   cleanup()
 })
@@ -111,6 +183,80 @@ describe('ghost suggestions', () => {
 
     await advanceFakeTime(300)
     expect(onFetchSuggestions).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders multiline ghost using content-box width and first-line indent for wrapping', async () => {
+    vi.useFakeTimers()
+    const onFetchSuggestions = vi
+      .fn<SuggestionFetcher>()
+      .mockResolvedValue([' and make it work and make it work'])
+
+    const { container } = render(
+      <GhostTestHarness
+        onFetchSuggestions={onFetchSuggestions}
+        multiline
+        classNames={{ ghostText: 'ghost-text' }}
+        styles={{
+          input: {
+            borderLeftWidth: '2px',
+            borderLeftStyle: 'solid',
+            borderRightWidth: '2px',
+            borderRightStyle: 'solid',
+            paddingLeft: '12px',
+            paddingRight: '20px',
+            fontFamily: 'monospace',
+            fontSize: '16px',
+            lineHeight: '24px',
+            wordBreak: 'break-word',
+            overflowWrap: 'anywhere',
+          },
+        }}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]') as HTMLElement
+    const wrapper = editor.parentElement as HTMLElement
+    const restoreRangeRect = mockRangeRect({
+      top: 42,
+      left: 120,
+      width: 1,
+      height: 20,
+    })
+    const restoreWrapperRect = mockElementRect(wrapper, {
+      top: 10,
+      left: 20,
+      width: 320,
+      height: 180,
+    })
+    const restoreEditorRect = mockElementRect(editor, {
+      top: 10,
+      left: 20,
+      width: 300,
+      height: 180,
+    })
+    const restoreClientWidth = mockNumericProperty(editor, 'clientWidth', 296)
+
+    try {
+      replaceEditorText(editor, 'lets fix use-image-drag.ts')
+      fireEvent.input(editor)
+      await advanceFakeTime(300)
+
+      const ghost = container.querySelector('.ghost-text') as HTMLElement
+      expect(ghost).not.toBeNull()
+      expect(ghost.style.left).toBe('14px')
+      expect(ghost.style.top).toBe('30px')
+      expect(ghost.style.width).toBe('264px')
+      expect(ghost.style.minHeight).toBe('24px')
+      expect(ghost.style.whiteSpace).toBe('pre-wrap')
+      expect(ghost.style.textIndent).toBe('86px')
+      expect(ghost.style.wordBreak).toBe('break-word')
+      expect(ghost.style.overflowWrap).toBe('anywhere')
+    } finally {
+      restoreClientWidth()
+      restoreEditorRect()
+      restoreWrapperRect()
+      restoreRangeRect()
+    }
   })
 
   it('treats trailing chip sentinel as visual end for ghost fetch', async () => {
@@ -255,6 +401,84 @@ describe('ghost suggestions', () => {
     fireEvent.keyDown(editor, { key: 'Escape' })
     expect(container.querySelector('.ghost-text')).toBeNull()
     expect(onChange.mock.calls.length).toBe(callsBeforeEscape)
+  })
+
+  it('accepts multiline ghost suggestion with Tab when wrap layout is active', async () => {
+    vi.useFakeTimers()
+    const onChange = vi.fn()
+    const onFetchSuggestions = vi
+      .fn<SuggestionFetcher>()
+      .mockResolvedValue([' and make it work and make it work'])
+
+    const { container } = render(
+      <GhostTestHarness
+        onFetchSuggestions={onFetchSuggestions}
+        onChangeSpy={onChange}
+        multiline
+        classNames={{ ghostText: 'ghost-text' }}
+        styles={{
+          input: {
+            borderLeftWidth: '2px',
+            borderLeftStyle: 'solid',
+            borderRightWidth: '2px',
+            borderRightStyle: 'solid',
+            paddingLeft: '12px',
+            paddingRight: '20px',
+            fontFamily: 'monospace',
+            fontSize: '16px',
+            lineHeight: '24px',
+          },
+        }}
+      />
+    )
+
+    const editor = container.querySelector('[role="textbox"]') as HTMLElement
+    const wrapper = editor.parentElement as HTMLElement
+    const restoreRangeRect = mockRangeRect({
+      top: 42,
+      left: 120,
+      width: 1,
+      height: 20,
+    })
+    const restoreWrapperRect = mockElementRect(wrapper, {
+      top: 10,
+      left: 20,
+      width: 320,
+      height: 180,
+    })
+    const restoreEditorRect = mockElementRect(editor, {
+      top: 10,
+      left: 20,
+      width: 300,
+      height: 180,
+    })
+    const restoreClientWidth = mockNumericProperty(editor, 'clientWidth', 296)
+
+    try {
+      replaceEditorText(editor, 'lets fix use-image-drag.ts')
+      fireEvent.input(editor)
+      await advanceFakeTime(300)
+      expect(container.querySelector('.ghost-text')?.textContent).toBe(
+        ' and make it work and make it work'
+      )
+
+      fireEvent.keyDown(editor, { key: 'Tab' })
+
+      const lastCall = onChange.mock.calls[
+        onChange.mock.calls.length - 1
+      ]?.[0] as Array<Segment>
+      expect(lastCall).toEqual([
+        {
+          type: 'text',
+          value: 'lets fix use-image-drag.ts and make it work and make it work',
+        },
+      ])
+    } finally {
+      restoreClientWidth()
+      restoreEditorRect()
+      restoreWrapperRect()
+      restoreRangeRect()
+    }
   })
 
   it('single-line Enter submits as-is when ghost is visible', async () => {

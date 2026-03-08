@@ -15,10 +15,22 @@ import {
 import type { Segment } from './types'
 
 type GhostAnchor = {
+  kind: 'single-line'
   top: number
   left: number
   height: number
 }
+
+type MultilineGhostAnchor = {
+  kind: 'multiline'
+  top: number
+  left: number
+  width: number
+  height: number
+  firstLineIndent: number
+}
+
+export type GhostLayout = GhostAnchor | MultilineGhostAnchor
 
 type UseSmartTextboxGhostParams = {
   editorRef: MutableRefObject<HTMLDivElement | null>
@@ -26,6 +38,7 @@ type UseSmartTextboxGhostParams = {
   onFetchSuggestions?: (trailing: string) => Promise<Array<string>>
   autocompleteDelay: number
   trailingLength: number
+  multiline: boolean
   mentionIsOpenRef: MutableRefObject<boolean>
   isComposingRef: MutableRefObject<boolean>
   onAcceptSuggestion: () => void
@@ -34,7 +47,7 @@ type UseSmartTextboxGhostParams = {
 type UseSmartTextboxGhostResult = {
   ghostSuggestions: Array<string>
   ghostActiveIndex: number
-  ghostAnchor: GhostAnchor | null
+  ghostLayout: GhostLayout | null
   ghostTypography: CSSProperties
   clearGhostState: (invalidateRequest?: boolean) => void
   scheduleGhostFetch: (segments: Array<Segment>) => void
@@ -48,13 +61,14 @@ export function useSmartTextboxGhost({
   onFetchSuggestions,
   autocompleteDelay,
   trailingLength,
+  multiline,
   mentionIsOpenRef,
   isComposingRef,
   onAcceptSuggestion,
 }: UseSmartTextboxGhostParams): UseSmartTextboxGhostResult {
   const [ghostSuggestions, setGhostSuggestions] = useState<Array<string>>([])
   const [ghostActiveIndex, setGhostActiveIndex] = useState(0)
-  const [ghostAnchor, setGhostAnchor] = useState<GhostAnchor | null>(null)
+  const [ghostLayout, setGhostLayout] = useState<GhostLayout | null>(null)
   const [ghostTypography, setGhostTypography] = useState<CSSProperties>({})
   const ghostDebounceIdRef = useRef<number | null>(null)
   const ghostRequestIdRef = useRef(0)
@@ -73,7 +87,7 @@ export function useSmartTextboxGhost({
     }
     setGhostSuggestions((previous) => (previous.length === 0 ? previous : []))
     setGhostActiveIndex((previous) => (previous === 0 ? previous : 0))
-    setGhostAnchor((previous) => (previous === null ? previous : null))
+    setGhostLayout((previous) => (previous === null ? previous : null))
   }
 
   function getCollapsedSelectionRange(editor: HTMLElement): Range | null {
@@ -103,26 +117,55 @@ export function useSmartTextboxGhost({
     return true
   }
 
-  function updateGhostAnchorFromSelection(): boolean {
+  function readPixelValue(value: string): number {
+    const parsed = Number.parseFloat(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  function hasSameGhostLayout(
+    previous: GhostLayout | null,
+    next: GhostLayout
+  ): boolean {
+    if (!previous || previous.kind !== next.kind) return false
+    if (
+      Math.abs(previous.top - next.top) >= 0.5 ||
+      Math.abs(previous.left - next.left) >= 0.5 ||
+      Math.abs(previous.height - next.height) >= 0.5
+    ) {
+      return false
+    }
+
+    if (previous.kind === 'multiline' && next.kind === 'multiline') {
+      return (
+        Math.abs(previous.width - next.width) < 0.5 &&
+        Math.abs(previous.firstLineIndent - next.firstLineIndent) < 0.5
+      )
+    }
+
+    return true
+  }
+
+  function updateGhostLayoutFromSelection(): boolean {
     const editor = editorRef.current
     const wrapper = wrapperRef.current
     if (!editor || !wrapper) {
-      setGhostAnchor(null)
+      setGhostLayout(null)
       return false
     }
 
     const selectionRange = getCollapsedSelectionRange(editor)
     if (!selectionRange) {
-      setGhostAnchor(null)
+      setGhostLayout(null)
       return false
     }
 
     const rect = getCollapsedCaretRect(selectionRange)
     if (!rect) {
-      setGhostAnchor(null)
+      setGhostLayout(null)
       return false
     }
 
+    const wrapperRect = wrapper.getBoundingClientRect()
     const editorComputed = window.getComputedStyle(editor)
     const parsedLineHeight = Number.parseFloat(editorComputed.lineHeight)
     const fallbackLineHeight = Number.isFinite(parsedLineHeight)
@@ -130,7 +173,6 @@ export function useSmartTextboxGhost({
       : 0
     const rectHeight = toFiniteNumber(rect.height)
     const height = Math.max(rectHeight, fallbackLineHeight)
-    const wrapperRect = wrapper.getBoundingClientRect()
     let top = toFiniteNumber(rect.top) - toFiniteNumber(wrapperRect.top)
     if (
       fallbackLineHeight > 0 &&
@@ -141,22 +183,54 @@ export function useSmartTextboxGhost({
       // leading), lift the anchor to line-box top so ghost aligns with text.
       top -= (fallbackLineHeight - rectHeight) / 2
     }
-    const nextAnchor: GhostAnchor = {
+
+    let nextLayout: GhostLayout = {
+      kind: 'single-line',
       top,
       left: toFiniteNumber(rect.left) - toFiniteNumber(wrapperRect.left),
       height,
     }
 
-    setGhostAnchor((previous) => {
-      if (
-        previous &&
-        Math.abs(previous.top - nextAnchor.top) < 0.5 &&
-        Math.abs(previous.left - nextAnchor.left) < 0.5 &&
-        Math.abs(previous.height - nextAnchor.height) < 0.5
-      ) {
+    if (multiline) {
+      const editorRect = editor.getBoundingClientRect()
+      const borderLeft = readPixelValue(editorComputed.borderLeftWidth)
+      const borderRight = readPixelValue(editorComputed.borderRightWidth)
+      const paddingLeft = readPixelValue(editorComputed.paddingLeft)
+      const paddingRight = readPixelValue(editorComputed.paddingRight)
+      const contentLeft =
+        toFiniteNumber(editorRect.left) -
+        toFiniteNumber(wrapperRect.left) +
+        borderLeft +
+        paddingLeft
+      const innerWidth =
+        editor.clientWidth > 0
+          ? editor.clientWidth
+          : Math.max(
+              0,
+              toFiniteNumber(editorRect.width) - borderLeft - borderRight
+            )
+      const contentWidth = Math.max(0, innerWidth - paddingLeft - paddingRight)
+      const contentLeftInViewport =
+        toFiniteNumber(editorRect.left) + borderLeft + paddingLeft
+
+      nextLayout = {
+        kind: 'multiline',
+        top,
+        left: contentLeft,
+        width: contentWidth,
+        height,
+        firstLineIndent: Math.max(
+          0,
+          toFiniteNumber(rect.left) - contentLeftInViewport
+        ),
+      }
+    }
+
+    setGhostLayout((previous) => {
+      if (hasSameGhostLayout(previous, nextLayout)) {
         return previous
       }
-      return nextAnchor
+      return nextLayout
     })
 
     return true
@@ -184,7 +258,9 @@ export function useSmartTextboxGhost({
       lineHeight: normalizedLineHeight,
       letterSpacing: computed.letterSpacing,
       textTransform: computed.textTransform,
-      textIndent: computed.textIndent,
+      whiteSpace: computed.whiteSpace,
+      wordBreak: computed.wordBreak as CSSProperties['wordBreak'],
+      overflowWrap: computed.overflowWrap as CSSProperties['overflowWrap'],
     }
 
     setGhostTypography((previous) => {
@@ -196,7 +272,9 @@ export function useSmartTextboxGhost({
         previous.lineHeight === nextTypography.lineHeight &&
         previous.letterSpacing === nextTypography.letterSpacing &&
         previous.textTransform === nextTypography.textTransform &&
-        previous.textIndent === nextTypography.textIndent
+        previous.whiteSpace === nextTypography.whiteSpace &&
+        previous.wordBreak === nextTypography.wordBreak &&
+        previous.overflowWrap === nextTypography.overflowWrap
       ) {
         return previous
       }
@@ -253,15 +331,15 @@ export function useSmartTextboxGhost({
           if (normalizedSuggestions.length === 0) {
             setGhostSuggestions([])
             setGhostActiveIndex(0)
-            setGhostAnchor(null)
+            setGhostLayout(null)
             return
           }
 
-          const hasAnchor = updateGhostAnchorFromSelection()
-          if (!hasAnchor) {
+          const hasLayout = updateGhostLayoutFromSelection()
+          if (!hasLayout) {
             setGhostSuggestions([])
             setGhostActiveIndex(0)
-            setGhostAnchor(null)
+            setGhostLayout(null)
             return
           }
 
@@ -273,7 +351,7 @@ export function useSmartTextboxGhost({
           if (requestId !== ghostRequestIdRef.current) return
           setGhostSuggestions([])
           setGhostActiveIndex(0)
-          setGhostAnchor(null)
+          setGhostLayout(null)
         })
     }, waitMs)
   }
@@ -323,7 +401,7 @@ export function useSmartTextboxGhost({
   function handleGhostKeyDown(e: KeyboardEvent<HTMLDivElement>): boolean {
     const hasVisibleGhost =
       !mentionIsOpenRef.current &&
-      ghostAnchor !== null &&
+      ghostLayout !== null &&
       ghostActiveIndex >= 0 &&
       ghostActiveIndex < ghostSuggestions.length &&
       (ghostSuggestions[ghostActiveIndex] ?? '').length > 0
@@ -354,7 +432,7 @@ export function useSmartTextboxGhost({
     const activeGhostSuggestion = ghostSuggestions[ghostActiveIndex] ?? ''
     if (
       mentionIsOpenRef.current ||
-      !ghostAnchor ||
+      !ghostLayout ||
       ghostSuggestions.length === 0 ||
       activeGhostSuggestion.length === 0
     ) {
@@ -362,11 +440,11 @@ export function useSmartTextboxGhost({
     }
 
     function syncGhostLayout(): void {
-      const hasAnchor = updateGhostAnchorFromSelection()
-      if (!hasAnchor) {
+      const hasLayout = updateGhostLayoutFromSelection()
+      if (!hasLayout) {
         setGhostSuggestions([])
         setGhostActiveIndex(0)
-        setGhostAnchor(null)
+        setGhostLayout(null)
         return
       }
       syncGhostTypographyFromEditor()
@@ -391,7 +469,7 @@ export function useSmartTextboxGhost({
   return {
     ghostSuggestions,
     ghostActiveIndex,
-    ghostAnchor,
+    ghostLayout,
     ghostTypography,
     clearGhostState,
     scheduleGhostFetch,

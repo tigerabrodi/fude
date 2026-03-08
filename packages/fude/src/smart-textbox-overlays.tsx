@@ -140,11 +140,22 @@ export function MentionDropdownPortal({
 type GhostTextOverlayProps = {
   isVisible: boolean
   text: string
-  anchor: {
-    top: number
-    left: number
-    height: number
-  } | null
+  anchor:
+    | {
+        kind: 'single-line'
+        top: number
+        left: number
+        height: number
+      }
+    | {
+        kind: 'multiline'
+        top: number
+        left: number
+        width: number
+        height: number
+        firstLineIndent: number
+      }
+    | null
   typography: CSSProperties
   classNames?: SmartTextboxClassNames
   styles?: SmartTextboxStyles
@@ -162,6 +173,7 @@ export function GhostTextOverlay({
 }: GhostTextOverlayProps): ReactElement | null {
   if (!isVisible || !anchor) return null
   const hasGhostClassOverride = Boolean(classNames?.ghostText)
+  const isMultiline = anchor.kind === 'multiline'
 
   return (
     <div
@@ -172,9 +184,12 @@ export function GhostTextOverlay({
         top: anchor.top,
         left: anchor.left,
         minHeight: anchor.height,
+        width: isMultiline ? anchor.width : undefined,
         pointerEvents: 'none',
         userSelect: 'none',
-        whiteSpace: 'pre',
+        display: isMultiline ? 'block' : undefined,
+        whiteSpace: isMultiline ? 'pre-wrap' : 'pre',
+        textIndent: isMultiline ? anchor.firstLineIndent : undefined,
         opacity: hasGhostClassOverride ? undefined : 0.35,
         color: hasGhostClassOverride ? undefined : '#6E6E6E',
         ...typography,
@@ -185,7 +200,7 @@ export function GhostTextOverlay({
         data-ghost-text-hitbox
         onPointerDown={onGhostPointerDown}
         style={{
-          display: 'inline-block',
+          display: isMultiline ? undefined : 'inline-block',
           pointerEvents: onGhostPointerDown ? 'auto' : 'none',
           touchAction: onGhostPointerDown ? 'manipulation' : undefined,
         }}
