@@ -1,6 +1,6 @@
 {
   "name": "@tigerabrodioss/fude",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Rich text input with @ mentions and AI autocomplete",
   "author": "Tiger Abrodi",
   "type": "module",
