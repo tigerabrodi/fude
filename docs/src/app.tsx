@@ -141,11 +141,12 @@ const TEXTBOX_CLASS_NAMES = {
   tagHighlighted: 'border-[#FAFAFA]',
   tagDeleteIcon: 'text-[#666666]',
   ghostText: 'text-[rgba(250,250,250,0.5)]',
-  dropdown: '!bg-[#161616] !border-[#262626] !rounded-[10px] !p-1',
+  dropdown:
+    'bg-[#161616] border border-[#262626] rounded-[10px] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.35)]',
   dropdownItem:
-    '!rounded-[7px] hover:!bg-[#1E1E1E] !text-[#AAAAAA] font-[Geist_Mono_Variable,Geist_Mono,ui-monospace,monospace] !text-[13px]',
+    'rounded-[7px] px-[10px] py-2 text-[13px] text-[#AAAAAA] hover:bg-[#1E1E1E] aria-selected:bg-[#1E1E1E] font-[Geist_Mono_Variable,Geist_Mono,ui-monospace,monospace]',
   tooltip:
-    '!bg-[#1A1A1A] !border-[#2A2A2A] !rounded-[6px] !text-[#999999] !text-xs font-[Geist_Mono_Variable,Geist_Mono,ui-monospace,monospace]',
+    'bg-[#1A1A1A] border border-[#2A2A2A] rounded-[6px] px-2 py-1 text-xs text-[#999999] font-[Geist_Mono_Variable,Geist_Mono,ui-monospace,monospace]',
 }
 
 const SINGLE_LINE_CLASS_NAMES = {

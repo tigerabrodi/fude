@@ -10,7 +10,7 @@
   "dependencies": {
     "@fontsource-variable/geist-mono": "^5.2.0",
     "@fontsource-variable/inter": "^5.2.0",
-    "@tigerabrodioss/fude": "^0.1.3",
+    "@tigerabrodioss/fude": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "shiki": "^4.0.1"
