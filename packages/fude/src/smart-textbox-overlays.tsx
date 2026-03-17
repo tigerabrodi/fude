@@ -74,14 +74,18 @@ export function MentionDropdownPortal({
         maxHeight: mentionDropdownPosition.maxHeight,
         overflowY: 'auto',
         overflowX: 'hidden',
-        border: '1px solid #2E2E2E',
-        borderRadius: 8,
-        backgroundColor: '#1C1C1C',
-        color: '#E5E5E5',
-        padding: 4,
-        zIndex: 1000,
         boxSizing: 'border-box',
-        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+        ...(!classNames?.dropdown
+          ? {
+              border: '1px solid #2E2E2E',
+              borderRadius: 8,
+              backgroundColor: '#1C1C1C',
+              color: '#E5E5E5',
+              padding: 4,
+              zIndex: 1000,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+            }
+          : undefined),
         ...styles?.dropdown,
       }}
     >
@@ -116,10 +120,14 @@ export function MentionDropdownPortal({
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              borderRadius: 6,
-              padding: '8px 10px',
               cursor: 'pointer',
-              backgroundColor: isActive ? '#2A2A2A' : 'transparent',
+              ...(!classNames?.dropdownItem
+                ? {
+                    borderRadius: 6,
+                    padding: '8px 10px',
+                    backgroundColor: isActive ? '#2A2A2A' : 'transparent',
+                  }
+                : undefined),
               ...styles?.dropdownItem,
             }}
           >
