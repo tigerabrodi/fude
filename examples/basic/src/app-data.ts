@@ -320,7 +320,6 @@ export const tailwindThemes: Array<TailwindTheme> = [
       input:
         'min-h-24 p-3 font-mono text-emerald-200 caret-emerald-300 tracking-tight placeholder:text-emerald-600/80 leading-6',
       tag: 'rounded-md border border-emerald-400/50 bg-slate-900 text-emerald-100 py-1 px-2',
-      tagWrapper: 'align-middle top-[2px]',
       tagIcon: 'text-emerald-300',
       tagDeleteIcon: 'text-rose-300',
       dropdown:

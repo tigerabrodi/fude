@@ -184,6 +184,7 @@ export function createChipSpan(id: string): HTMLSpanElement {
   span.style.display = 'inline-block' // keeps baseline alignment predictable
   span.style.verticalAlign = 'text-bottom'
   span.style.lineHeight = '1'
+  span.style.top = '2px'
   span.style.userSelect = 'none' // prevent text selection inside chip
   return span
 }

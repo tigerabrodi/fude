@@ -338,6 +338,11 @@ describe('deserialize', () => {
     expect(chip.tagName).toBe('SPAN')
     expect(chip.getAttribute(MENTION_ID_ATTR)).toBe('1')
     expect(chip.contentEditable).toBe('false')
+    expect(chip.style.position).toBe('relative')
+    expect(chip.style.display).toBe('inline-block')
+    expect(chip.style.verticalAlign).toBe('text-bottom')
+    expect(chip.style.lineHeight).toBe('1')
+    expect(chip.style.top).toBe('2px')
     // Sentinel text node for cursor navigation
     expect(fragment.childNodes[1].nodeType).toBe(Node.TEXT_NODE)
     expect(fragment.childNodes[1].textContent).toBe(CHIP_SENTINEL)
